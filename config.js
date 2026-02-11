@@ -19,7 +19,7 @@ window.FINANCE_CONFIG = {
 
   // GitHub Pages base URL
   // Format: https://USERNAME.github.io/REPONAME
-  githubPagesBase: "https://bnelson12812.github.io/personal-finance",
+  githubPagesBase: "https://bnelson12812.github.io/Personal-Finance",
 
   // Auto-detection: scan for CSV files starting from this month
   // Format: { month: 1-12, year: YYYY }
