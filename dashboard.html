@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Finance Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:           #F6F4EF;
+      --surface:      #FFFFFF;
+      --ink:          #1C1C1A;
+      --ink-muted:    #7A7A72;
+      --accent:       #2D5A3D;
+      --accent-light: #EBF2ED;
+      --border:       #E2DFD8;
+      --positive:     #2D5A3D;
+      --negative:     #B94040;
+      --warn:         #C47B2B;
+    }
+    body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--ink); min-height: 100vh; }
+
+    /* HEADER */
+    header { background: var(--surface); border-bottom: 1px solid var(--border); padding: 0 32px; height: 60px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; }
+    .logo { font-family: 'DM Serif Display', serif; font-size: 1.25rem; }
+    .logo span { color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 16px; font-size: 0.85rem; color: var(--ink-muted); }
+    .user-pill { background: var(--accent-light); color: var(--accent); padding: 4px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 500; }
+    .logout-btn { background: none; border: 1px solid var(--border); border-radius: 6px; padding: 6px 14px; font-family: 'DM Sans', sans-serif; font-size: 0.82rem; color: var(--ink-muted); cursor: pointer; transition: all 0.15s; }
+    .logout-btn:hover { border-color: var(--ink-muted); color: var(--ink); }
+
+    /* LAYOUT */
+    .container { max-width: 1200px; margin: 0 auto; padding: 32px 24px; }
+
+    /* LOADING STATE */
+    .loading-screen { text-align: center; padding: 80px 24px; }
+    .loading-screen .spinner { width: 36px; height: 36px; border: 3px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-screen p { color: var(--ink-muted); font-size: 0.9rem; }
+
+    /* ERROR STATE */
+    .error-screen { text-align: center; padding: 80px 24px; }
+    .error-screen .icon { font-size: 2.5rem; margin-bottom: 12px; }
+    .error-screen h3 { font-family: 'DM Serif Display', serif; font-size: 1.2rem; margin-bottom: 8px; }
+    .error-screen p { color: var(--ink-muted); font-size: 0.875rem; line-height: 1.6; max-width: 400px; margin: 0 auto 20px; }
+    .retry-btn { padding: 10px 24px; background: var(--accent); color: #fff; border: none; border-radius: 7px; font-family: 'DM Sans', sans-serif; font-size: 0.875rem; cursor: pointer; }
+    .retry-btn:hover { background: #234930; }
+
+    /* METRICS */
+    .metrics-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 16px; margin-bottom: 24px; animation: fadeUp 0.4s ease 0.1s both; }
+    .metric-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 22px 24px; }
+    .metric-label { font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 8px; }
+    .metric-value { font-family: 'DM Serif Display', serif; font-size: 1.7rem; color: var(--ink); line-height: 1; }
+    .metric-value.positive { color: var(--positive); }
+    .metric-value.negative { color: var(--negative); }
+    .metric-sub { font-size: 0.78rem; color: var(--ink-muted); margin-top: 6px; }
+
+    /* CHARTS */
+    .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; animation: fadeUp 0.4s ease 0.2s both; }
+    .chart-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+    .chart-card.full-width { grid-column: 1 / -1; }
+    .chart-title { font-size: 0.8rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 20px; }
+    .chart-wrap { position: relative; height: 240px; }
+    .chart-wrap.tall { height: 300px; }
+
+    /* TABS */
+    .tabs { display: flex; gap: 4px; margin-bottom: 24px; border-bottom: 1px solid var(--border); animation: fadeUp 0.4s ease 0.15s both; }
+    .tab-btn { padding: 10px 18px; border: none; background: none; font-family: 'DM Sans', sans-serif; font-size: 0.875rem; color: var(--ink-muted); cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
+    .tab-btn:hover { color: var(--ink); }
+    .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 500; }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* BUDGET */
+    .budget-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px; }
+    .budget-header h3 { font-family: 'DM Serif Display', serif; font-size: 1.1rem; font-weight: 400; }
+    .budget-income-row { font-size: 0.875rem; color: var(--ink-muted); margin-top: 4px; }
+    .budget-income-row strong { color: var(--ink); }
+    .summary-cards { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 28px; }
+    .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+    .summary-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    .summary-info { display: flex; flex-direction: column; gap: 3px; }
+    .summary-label { font-size: 0.85rem; font-weight: 500; color: var(--ink); }
+    .summary-target { font-size: 0.75rem; color: var(--ink-muted); }
+    .summary-amounts { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+    .summary-actual { font-family: 'DM Serif Display', serif; font-size: 1.2rem; color: var(--ink); }
+    .summary-pct { font-size: 0.78rem; color: var(--ink-muted); }
+    .progress-track { height: 6px; background: var(--bg); border-radius: 3px; position: relative; overflow: visible; }
+    .progress-fill { height: 100%; border-radius: 3px; transition: width 0.6s ease; }
+    .progress-target-line { position: absolute; top: -3px; width: 2px; height: 12px; background: var(--ink-muted); border-radius: 1px; opacity: 0.35; }
+    .budget-sections { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 24px; }
+    .budget-section-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+    .budget-section-title { font-size: 0.8rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 16px; }
+    .budget-row { margin-bottom: 14px; }
+    .budget-row:last-child { margin-bottom: 0; }
+    .budget-row-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+    .budget-cat { display: flex; align-items: center; gap: 6px; }
+    .budget-cat-name { font-size: 0.875rem; color: var(--ink); }
+    .fixed-badge { font-size: 0.65rem; background: #F0EDE8; color: var(--ink-muted); padding: 1px 6px; border-radius: 4px; }
+    .budget-amounts { display: flex; align-items: center; gap: 4px; font-size: 0.82rem; }
+    .budget-actual { font-weight: 500; color: var(--ink); }
+    .budget-slash  { color: var(--ink-muted); }
+    .budget-target { color: var(--ink-muted); }
+    .budget-pct    { color: var(--ink-muted); font-size: 0.75rem; margin-left: 4px; }
+
+    /* CASH FLOW */
+    .cashflow-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 24px; }
+    .cf-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 0.875rem; }
+    .cf-row:last-child { border-bottom: none; }
+    .cf-income, .cf-result { font-weight: 500; }
+    .cf-result { font-size: 0.95rem; }
+    .cf-alert { background: var(--bg); margin: 0 -24px -24px; padding: 12px 24px; border-radius: 0 0 10px 10px; }
+    .cf-divider { height: 1px; background: var(--border); margin: 4px 0; }
+    .cf-amount { font-weight: 500; }
+
+    /* STATUS COLORS */
+    .positive    { color: var(--positive); }
+    .negative    { color: var(--negative); }
+    .over-budget { color: var(--negative); }
+    .near-budget { color: var(--warn); }
+
+    /* SETTINGS */
+    .settings-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 28px; margin-bottom: 24px; }
+    .settings-card h3 { font-family: 'DM Serif Display', serif; font-size: 1rem; font-weight: 400; margin-bottom: 20px; }
+    .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .settings-field label { display: block; font-size: 0.75rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 6px; }
+    .settings-field input { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 0.9rem; color: var(--ink); background: var(--bg); outline: none; transition: border-color 0.15s; }
+    .settings-field input:focus { border-color: var(--accent); background: #fff; }
+    .settings-field .field-hint { font-size: 0.75rem; color: var(--ink-muted); margin-top: 4px; }
+    .save-btn { padding: 10px 24px; background: var(--accent); color: #fff; border: none; border-radius: 7px; font-family: 'DM Sans', sans-serif; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: background 0.15s; }
+    .save-btn:hover { background: #234930; }
+
+    /* CATEGORIES */
+    .category-list { display: flex; flex-direction: column; gap: 10px; }
+    .category-row { display: flex; align-items: center; gap: 12px; font-size: 0.875rem; }
+    .category-name { flex: 1; }
+    .category-amount { font-weight: 500; min-width: 80px; text-align: right; }
+    .category-bar-wrap { flex: 2; height: 6px; background: var(--bg); border-radius: 3px; overflow: hidden; }
+    .category-bar { height: 100%; background: var(--accent); border-radius: 3px; transition: width 0.6s ease; }
+
+    /* TRANSACTIONS */
+    .table-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+    .table-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
+    .table-title { font-size: 0.8rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); }
+    .filters-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead th { padding: 10px 16px; text-align: left; font-size: 0.72rem; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); background: var(--bg); border-bottom: 1px solid var(--border); }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--bg); }
+    td { padding: 11px 16px; }
+    select { padding: 7px 11px; border: 1px solid var(--border); border-radius: 6px; font-family: 'DM Sans', sans-serif; font-size: 0.83rem; color: var(--ink); background: var(--surface); outline: none; cursor: pointer; }
+    select:focus { border-color: var(--accent); }
+    .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 500; }
+    .badge-debit    { background: #EBF2ED; color: var(--accent); }
+    .badge-credit   { background: #FDF3E7; color: var(--warn); }
+    .badge-transfer { background: #F0F0EC; color: var(--ink-muted); }
+    .amount-debit  { color: var(--negative); font-weight: 500; }
+    .amount-credit { color: var(--positive); font-weight: 500; }
+
+    /* DATA STATUS BANNER */
+    .data-banner { background: var(--accent-light); border: 1px solid #C5DEC9; border-radius: 10px; padding: 14px 20px; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; font-size: 0.875rem; animation: fadeUp 0.35s ease both; }
+    .data-banner .banner-info { color: var(--accent); }
+    .data-banner .banner-hint { font-size: 0.78rem; color: var(--ink-muted); margin-top: 2px; }
+    .data-banner .update-link { font-size: 0.78rem; color: var(--accent); text-decoration: underline; cursor: pointer; }
+
+    /* TOAST */
+    .toast { position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(16px); background: var(--ink); color: #fff; padding: 10px 20px; border-radius: 8px; font-size: 0.85rem; opacity: 0; transition: all 0.25s; pointer-events: none; z-index: 999; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    @keyframes fadeUp { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:translateY(0); } }
+    @media (max-width: 768px) { .metrics-grid, .charts-grid, .summary-cards, .budget-sections, .settings-grid { grid-template-columns: 1fr; } .chart-card.full-width { grid-column: 1; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">Finance <span>Dashboard</span></div>
+  <div class="header-right">
+    <span class="user-pill" id="userPill"></span>
+    <button class="logout-btn" onclick="logout()">Sign out</button>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- LOADING -->
+  <div class="loading-screen" id="loadingScreen">
+    <div class="spinner"></div>
+    <p>Loading your financial data…</p>
+  </div>
+
+  <!-- ERROR -->
+  <div class="error-screen" id="errorScreen" style="display:none">
+    <div class="icon">📂</div>
+    <h3>No Data Found</h3>
+    <p>We couldn't find your CSV files. Upload your bank exports to your GitHub data folder to get started.</p>
+    <p style="margin-top:8px; font-size:0.8rem;">Expected location: <code id="expectedPath"></code></p>
+    <br/>
+    <button class="retry-btn" onclick="loadData()">Try Again</button>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div id="dashboard" style="display:none">
+
+    <!-- DATA STATUS BANNER -->
+    <div class="data-banner">
+      <div>
+        <div class="banner-info">✅ Data loaded successfully</div>
+        <div class="banner-hint">To update: upload new CSVs to <code id="dataPathHint"></code> in your GitHub repo</div>
+      </div>
+      <span class="update-link" onclick="loadData()">↺ Refresh data</span>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+      <button class="tab-btn" onclick="switchTab('budget')">Budget</button>
+      <button class="tab-btn" onclick="switchTab('categories')">Categories</button>
+      <button class="tab-btn" onclick="switchTab('transactions')">Transactions</button>
+      <button class="tab-btn" onclick="switchTab('settings')">Settings</button>
+    </div>
+
+    <!-- OVERVIEW -->
+    <div class="tab-panel active" id="tab-overview">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-label">Total Income</div>
+          <div class="metric-value positive" id="metricIncome">—</div>
+          <div class="metric-sub">Credits received</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Total Expenses</div>
+          <div class="metric-value" id="metricExpenses">—</div>
+          <div class="metric-sub">Debits (excl. transfers)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Net Cash Flow</div>
+          <div class="metric-value" id="metricNet">—</div>
+          <div class="metric-sub">Income minus expenses</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">Savings Rate</div>
+          <div class="metric-value" id="metricSavings">—</div>
+          <div class="metric-sub">% of income saved</div>
+        </div>
+      </div>
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Monthly Cash Flow</div>
+          <div class="chart-wrap"><canvas id="cashflowChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Spending by Account</div>
+          <div class="chart-wrap"><canvas id="accountChart"></canvas></div>
+        </div>
+        <div class="chart-card full-width">
+          <div class="chart-title">Monthly Expenses by Category</div>
+          <div class="chart-wrap tall"><canvas id="categoryMonthlyChart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BUDGET -->
+    <div class="tab-panel" id="tab-budget">
+      <div class="budget-header">
+        <div>
+          <h3>50/30/20 Budget Tracker</h3>
+          <div class="budget-income-row">
+            <span id="budgetMonthLabel">—</span> &nbsp;·&nbsp; Monthly Income: <strong id="budgetIncome">—</strong>
+          </div>
+        </div>
+        <select id="budgetMonth" onchange="renderBudget()"></select>
+      </div>
+      <div class="summary-cards">
+        <div class="summary-card" id="summary_needs"></div>
+        <div class="summary-card" id="summary_wants"></div>
+        <div class="summary-card" id="summary_savings"></div>
+      </div>
+      <div class="budget-sections">
+        <div class="budget-section-card">
+          <div class="budget-section-title">🏠 Needs — 50%</div>
+          <div id="budget_needs"></div>
+        </div>
+        <div class="budget-section-card">
+          <div class="budget-section-title">🎉 Wants — 30%</div>
+          <div id="budget_wants"></div>
+        </div>
+      </div>
+      <div class="cashflow-card">
+        <div class="chart-title" style="margin-bottom:16px">💸 Monthly Cash Flow Breakdown</div>
+        <div id="cashFlowBreakdown"></div>
+      </div>
+    </div>
+
+    <!-- CATEGORIES -->
+    <div class="tab-panel" id="tab-categories">
+      <div class="charts-grid">
+        <div class="chart-card">
+          <div class="chart-title">Spending Breakdown</div>
+          <div class="chart-wrap tall"><canvas id="categoryPieChart"></canvas></div>
+        </div>
+        <div class="chart-card">
+          <div class="chart-title">Top Categories</div>
+          <div style="overflow-y:auto; max-height:300px;">
+            <div class="category-list" id="categoryList"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSACTIONS -->
+    <div class="tab-panel" id="tab-transactions">
+      <div class="table-card">
+        <div class="table-header">
+          <div class="table-title">All Transactions</div>
+          <div class="filters-row">
+            <select id="filterMonth" onchange="renderTable()"><option value="all">All Months</option></select>
+            <select id="filterAccount" onchange="renderTable()">
+              <option value="all">Both Accounts</option>
+              <option value="debit">Debit Only</option>
+              <option value="credit">Credit Only</option>
+            </select>
+            <select id="filterType" onchange="renderTable()">
+              <option value="all">All Types</option>
+              <option value="expense">Expenses</option>
+              <option value="income">Income</option>
+            </select>
+          </div>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>Date</th><th>Description</th><th>Category</th><th>Account</th><th>Debit</th><th>Credit</th></tr>
+            </thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS -->
+    <div class="tab-panel" id="tab-settings">
+      <div class="settings-card">
+        <h3>Budget Settings</h3>
+        <div class="settings-grid">
+          <div class="settings-field">
+            <label>Monthly Rent Amount</label>
+            <input type="number" id="settingRent" placeholder="2480"/>
+            <div class="field-hint">Your fixed rent amount used for the Housing budget line.</div>
+          </div>
+          <div class="settings-field">
+            <label>Income Override (optional)</label>
+            <input type="number" id="settingIncomeOverride" placeholder="Auto-detected from deposits"/>
+            <div class="field-hint">Leave blank to auto-detect income from CSV credits.</div>
+          </div>
+          <div class="settings-field">
+            <label>Rent Keyword (optional)</label>
+            <input type="text" id="settingRentKeyword" placeholder="e.g. Rent, Landlord name"/>
+            <div class="field-hint">Once rent appears in your CSV, enter a keyword to auto-detect it.</div>
+          </div>
+          <div class="settings-field">
+            <label>Income Keyword (optional)</label>
+            <input type="text" id="settingIncomeKeyword" placeholder="e.g. Direct Deposit, Payroll"/>
+            <div class="field-hint">Filters credits so only paychecks count as income.</div>
+          </div>
+        </div>
+        <button class="save-btn" onclick="saveBudgetSettings()">Save Settings</button>
+      </div>
+
+      <div class="settings-card">
+        <h3>How to Update Your Data</h3>
+        <div style="font-size:0.875rem; line-height:1.8; color:var(--ink-muted);">
+          <p>Each month, upload fresh CSV exports from your bank to GitHub:</p>
+          <ol style="margin: 12px 0 0 20px; display:flex; flex-direction:column; gap:6px;">
+            <li>Export your debit and credit CSVs from your bank's website</li>
+            <li>Go to your GitHub repository → <code id="settingsDataPath"></code></li>
+            <li>Click <strong>Add file → Upload files</strong></li>
+            <li>Upload as <strong>debit.csv</strong> and <strong>credit.csv</strong></li>
+            <li>Click <strong>Commit changes</strong></li>
+            <li>Come back here and click <strong>Refresh data</strong> in the banner above</li>
+          </ol>
+        </div>
+      </div>
+
+      <div class="settings-card">
+        <h3>50/30/20 Budget Targets</h3>
+        <table style="width:100%; font-size:0.875rem;">
+          <thead>
+            <tr>
+              <th style="text-align:left; padding:8px 0; color:var(--ink-muted); font-weight:500; border-bottom:1px solid var(--border)">Category</th>
+              <th style="text-align:left; padding:8px 0; color:var(--ink-muted); font-weight:500; border-bottom:1px solid var(--border)">Bucket</th>
+              <th style="text-align:right; padding:8px 0; color:var(--ink-muted); font-weight:500; border-bottom:1px solid var(--border)">% of Income</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Housing</td><td>Needs</td><td style="text-align:right">30%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Groceries</td><td>Needs</td><td style="text-align:right">8%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Transportation</td><td>Needs</td><td style="text-align:right">7%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Utilities</td><td>Needs</td><td style="text-align:right">5%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Dining</td><td>Wants</td><td style="text-align:right">8%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Shopping</td><td>Wants</td><td style="text-align:right">8%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Entertainment</td><td>Wants</td><td style="text-align:right">7%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Health & Fitness</td><td>Wants</td><td style="text-align:right">4%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Pharmacy</td><td>Wants</td><td style="text-align:right">2%</td></tr>
+            <tr><td style="padding:8px 0; border-bottom:1px solid var(--border)">Business Services</td><td>Wants</td><td style="text-align:right">1%</td></tr>
+            <tr style="font-weight:600"><td style="padding:8px 0">Savings</td><td>Savings</td><td style="text-align:right">20%</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div><!-- /#dashboard -->
+</div><!-- /.container -->
+
+<div class="toast" id="toast"></div>
+
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
