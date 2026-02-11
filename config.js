@@ -1,26 +1,51 @@
 /**
- * Finance Dashboard Configuration
+ * Finance Dashboard — config.js
  * ================================
- * IMPORTANT: Change your password before uploading to GitHub!
+ * IMPORTANT: Change passwords before uploading to GitHub!
  *
- * To generate a new password hash:
- * 1. Open your browser console (F12)
- * 2. Paste this and press Enter (replace "yourpassword" with your actual password):
+ * To generate a password hash:
+ * 1. Open browser console (F12)
+ * 2. Run this (replace 'yourpassword' with actual password):
  *
  *    crypto.subtle.digest('SHA-256', new TextEncoder().encode('yourpassword'))
  *      .then(buf => console.log(Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('')))
  *
- * 3. Copy the output and paste it as the passwordHash below.
+ * 3. Copy the output and paste below as passwordHash
  *
- * Default credentials:
- *   Username: admin
- *   Password: changeme123
+ * Default password for both users: changeme123
  */
 
 window.FINANCE_CONFIG = {
-  username: "admin",
 
-  // SHA-256 hash of "changeme123"
-  // CHANGE THIS before uploading to GitHub!
-  passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be"
+  // GitHub Pages URL base — used to fetch CSV files
+  // Format: https://USERNAME.github.io/REPONAME
+  githubPagesBase: "https://bnelson12812.github.io/personal-finance",
+
+  // User accounts
+  users: {
+    "bnelson": {
+      displayName: "B Nelson",
+      // SHA-256 hash of "changeme123" — CHANGE THIS!
+      passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be",
+      dataFolder: "data/bnelson",
+      budgetSettings: {
+        rentAmount:     2480,
+        incomeOverride: null,
+        rentKeyword:    "",
+        incomeKeyword:  ""
+      }
+    },
+    "wnelson": {
+      displayName: "W Nelson",
+      // SHA-256 hash of "changeme123" — CHANGE THIS!
+      passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be",
+      dataFolder: "data/wnelson",
+      budgetSettings: {
+        rentAmount:     0,
+        incomeOverride: null,
+        rentKeyword:    "",
+        incomeKeyword:  ""
+      }
+    }
+  }
 };
