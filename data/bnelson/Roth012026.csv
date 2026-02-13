@@ -1,0 +1,5 @@
+﻿Account Number,Account Name,Symbol,Description,Quantity,Last Price,Last Price Change,Current Value,Today's Gain/Loss Dollar,Today's Gain/Loss Percent,Total Gain/Loss Dollar,Total Gain/Loss Percent,Percent Of Account,Cost Basis Total,Average Cost Basis,Type
+258447010,ROTH IRA,SPAXX**,HELD IN MONEY MARKET,,,,"$2,745.49 ",,,,,17.23%,,,Cash
+258447010,ROTH IRA,VB,VANGUARD SMALL-CAP INDEX FUND,4.878,$272.94 ,($5.19),"$1,331.40 ",($25.32),-1.87%,$225.45 ,20.38%,8.36%,"$1,105.95 ",$226.72 ,Cash
+258447010,ROTH IRA,VTI,VANGUARD INDEX FDS VANGUARD TOTAL STK MKT ETF,22.898,$336.01 ,($5.46),"$7,693.95 ",($125.03),-1.60%,$778.47 ,11.25%,48.28%,"$6,915.48 ",$302.01 ,Cash
+258447010,ROTH IRA,VXUS,VANGUARD TOTAL INTERNATIONAL STOCK INDEX FUND,50.707,$82.13 ,($0.86),"$4,164.56 ",($43.61),-1.04%,$654.49 ,18.64%,26.13%,"$3,510.07 ",$69.22 ,Cash
