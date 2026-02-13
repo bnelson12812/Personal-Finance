@@ -6,240 +6,214 @@
   <title>finance.dashboard</title>
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
     :root {
-      --bg:       #F4F3F0;
-      --surface:  #FFFFFF;
-      --ink:      #1A1A1A;
-      --muted:    #888880;
-      --border:   #DDDBD6;
-      --accent:   #1A1A1A;
-      --positive: #2A6B3C;
-      --negative: #8B2020;
-      --warn:     #7A5C1E;
-      --grid:     #E8E6E1;
+      --bg:      #F4F3F0;
+      --surface: #FFFFFF;
+      --ink:     #1A1A1A;
+      --muted:   #888880;
+      --border:  #DDDBD6;
+      --grid:    #ECEAE5;
+      --pos:     #2A6B3C;
+      --neg:     #8B2020;
+      --warn:    #7A5C1E;
     }
+    body { font-family: 'IBM Plex Mono', monospace; background: var(--bg); color: var(--ink); min-height: 100vh; font-size: 13px; }
 
-    body {
-      font-family: 'IBM Plex Mono', monospace;
-      background: var(--bg);
-      color: var(--ink);
-      min-height: 100vh;
-      font-size: 13px;
-    }
-
-    /* ── HEADER ── */
-    header {
-      background: var(--bg);
-      border-bottom: 1px solid var(--border);
-      padding: 0 32px;
-      height: 48px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      position: sticky;
-      top: 0;
-      z-index: 100;
-    }
-    .logo { font-size: 0.85rem; font-weight: 400; letter-spacing: 0.02em; }
+    /* header */
+    header { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 32px; height: 48px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; }
+    .logo { font-size: 0.85rem; }
     .logo span { color: var(--muted); }
-    .header-right { display: flex; align-items: center; gap: 24px; color: var(--muted); font-size: 0.75rem; }
-    .user-tag { color: var(--ink); }
-    .logout-btn { background: none; border: 1px solid var(--border); padding: 4px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--muted); cursor: pointer; transition: all 0.15s; letter-spacing: 0.02em; }
+    .hdr-right { display: flex; align-items: center; gap: 24px; font-size: 0.72rem; color: var(--muted); }
+    .logout-btn { background: none; border: 1px solid var(--border); padding: 4px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--muted); cursor: pointer; transition: all 0.15s; }
     .logout-btn:hover { border-color: var(--ink); color: var(--ink); }
 
-    /* ── LAYOUT ── */
-    .container { max-width: 1280px; margin: 0 auto; padding: 28px 32px; }
+    /* layout */
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
 
-    /* ── NAV TABS ── */
-    .nav { display: flex; gap: 0; margin-bottom: 28px; border-bottom: 1px solid var(--border); }
-    .nav-btn { padding: 8px 20px; border: none; background: none; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--muted); cursor: pointer; border-bottom: 1px solid transparent; margin-bottom: -1px; transition: all 0.15s; letter-spacing: 0.04em; }
+    /* nav */
+    .nav { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .nav-btn { padding: 8px 18px; border: none; background: none; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--muted); cursor: pointer; border-bottom: 1px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
     .nav-btn:hover { color: var(--ink); }
     .nav-btn.active { color: var(--ink); border-bottom-color: var(--ink); }
-    .tab-panel { display: none; }
-    .tab-panel.active { display: block; }
+    .tab { display: none; }
+    .tab.active { display: block; }
 
-    /* ── SECTION LABEL ── */
-    .section-label { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-bottom: 12px; }
-
-    /* ── LOADING / ERROR ── */
-    .status-screen { padding: 80px 0; text-align: center; color: var(--muted); font-size: 0.8rem; }
-    .status-screen .spinner { width: 20px; height: 20px; border: 1px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 16px; }
+    /* status */
+    .status { padding: 80px 0; text-align: center; color: var(--muted); font-size: 0.78rem; }
+    .spinner { width: 18px; height: 18px; border: 1px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 14px; }
     @keyframes spin { to { transform: rotate(360deg); } }
-    .retry-btn { margin-top: 16px; background: none; border: 1px solid var(--border); padding: 6px 16px; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--ink); cursor: pointer; }
+    .retry-btn { margin-top: 14px; background: none; border: 1px solid var(--border); padding: 5px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink); cursor: pointer; }
     .retry-btn:hover { border-color: var(--ink); }
 
-    /* ── NET WORTH CARDS ── */
-    .nw-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 24px; }
-    .nw-card { background: var(--surface); padding: 20px 20px 16px; }
-    .nw-card.total { background: var(--ink); color: #fff; }
-    .nw-label { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px; }
-    .nw-card.total .nw-label { color: rgba(255,255,255,0.5); }
-    .nw-value { font-size: 1.3rem; font-weight: 300; letter-spacing: -0.02em; }
-    .nw-card.total .nw-value { color: #fff; }
-    .nw-sub { font-size: 0.68rem; color: var(--muted); margin-top: 6px; }
-    .nw-card.total .nw-sub { color: rgba(255,255,255,0.4); }
-    .nw-change { font-size: 0.72rem; margin-top: 4px; }
-    .pos { color: var(--positive); }
-    .neg { color: var(--negative); }
+    /* section label */
+    .slabel { font-size: 0.65rem; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; }
 
-    /* ── MONTH SUMMARY CARDS ── */
-    .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 24px; }
-    .summary-card { background: var(--surface); padding: 18px 20px; }
-    .s-label { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
-    .s-value { font-size: 1.15rem; font-weight: 300; }
-    .s-sub { font-size: 0.68rem; color: var(--muted); margin-top: 4px; }
-    .s-bar { height: 2px; background: var(--grid); margin-top: 10px; }
-    .s-bar-fill { height: 100%; background: var(--ink); transition: width 0.6s ease; }
+    /* banner */
+    .banner { border: 1px solid var(--border); background: var(--surface); padding: 9px 14px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; font-size: 0.7rem; color: var(--muted); }
+    .refresh { color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+    /* card grids */
+    .card-grid { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 20px; }
+    .card-grid.cols5 { grid-template-columns: repeat(5,1fr); }
+    .card-grid.cols4 { grid-template-columns: repeat(4,1fr); }
+    .card-grid.cols3 { grid-template-columns: repeat(3,1fr); }
+    .card { background: var(--surface); padding: 18px 20px 14px; }
+    .card.dark { background: var(--ink); }
+    .card-label { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+    .card.dark .card-label { color: rgba(255,255,255,0.45); }
+    .card-value { font-size: 1.2rem; font-weight: 300; }
+    .card.dark .card-value { color: #fff; }
+    .card-sub { font-size: 0.65rem; color: var(--muted); margin-top: 5px; }
+    .card.dark .card-sub { color: rgba(255,255,255,0.35); }
+    .bar2 { height: 2px; background: var(--grid); margin-top: 10px; }
+    .bar2-fill { height: 100%; background: var(--ink); transition: width 0.5s; }
 
     /* ── BUDGET MATRIX ── */
-    .matrix { border: 1px solid var(--border); background: var(--surface); margin-bottom: 24px; }
-    .matrix-header { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 80px; gap: 0; border-bottom: 1px solid var(--border); background: var(--bg); padding: 8px 16px; }
-    .matrix-header span { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-    .matrix-header span:not(:first-child) { text-align: right; }
-    .matrix-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 80px; gap: 0; padding: 10px 16px; border-bottom: 1px solid var(--grid); align-items: center; transition: background 0.1s; }
-    .matrix-row:last-child { border-bottom: none; }
-    .matrix-row:hover { background: var(--bg); }
-    .matrix-row.group-header { background: var(--bg); padding: 6px 16px; cursor: pointer; }
-    .matrix-row.group-header .row-name { font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink); display: flex; align-items: center; gap: 6px; }
-    .matrix-row.sub-row { padding-left: 32px; }
-    .matrix-row.sub-row .row-name { color: var(--muted); font-size: 0.78rem; }
-    .row-name { font-size: 0.82rem; }
-    .row-val { text-align: right; font-size: 0.82rem; font-weight: 300; }
-    .row-diff.pos { color: var(--positive); }
-    .row-diff.neg { color: var(--negative); }
-    .row-bar-cell { padding-left: 8px; }
-    .mini-bar { height: 3px; background: var(--grid); border-radius: 1px; overflow: hidden; }
-    .mini-bar-fill { height: 100%; border-radius: 1px; transition: width 0.5s ease; }
-    .caret { font-size: 0.6rem; transition: transform 0.2s; display: inline-block; }
+    .matrix { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .mx-head { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .mx-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); text-align: right; }
+    .mx-head span:first-child { text-align: left; }
+
+    /* group row — level 1 */
+    .mx-group { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 9px 14px; background: var(--bg); border-bottom: 1px solid var(--border); cursor: pointer; align-items: center; }
+    .mx-group:hover { background: #ECEAE5; }
+    .mx-group-name { font-size: 0.72rem; letter-spacing: 0.06em; display: flex; align-items: center; gap: 6px; }
+    .mx-val { text-align: right; font-weight: 300; }
+    .mx-diff { text-align: right; font-size: 0.72rem; }
+    .mx-diff.pos { color: var(--pos); }
+    .mx-diff.neg { color: var(--neg); }
+    .minibar { width: 48px; height: 3px; background: var(--grid); margin-left: auto; }
+    .minibar-fill { height: 100%; transition: width 0.4s; }
+
+    /* category row — level 2 */
+    .mx-cat { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 8px 14px 8px 28px; border-bottom: 1px solid var(--grid); cursor: pointer; align-items: center; background: var(--surface); }
+    .mx-cat:hover { background: var(--bg); }
+    .mx-cat-name { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+
+    /* merchant row — level 3 */
+    .mx-merchant { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 7px 14px 7px 46px; border-bottom: 1px solid var(--grid); cursor: pointer; align-items: center; background: var(--surface); }
+    .mx-merchant:hover { background: var(--bg); }
+    .mx-merchant-name { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.75rem; }
+
+    /* transaction row — level 4 */
+    .mx-tx { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 6px 14px 6px 64px; border-bottom: 1px solid var(--grid); background: var(--surface); align-items: center; }
+    .mx-tx:last-child { border-bottom: none; }
+    .mx-tx-name { color: var(--muted); font-size: 0.72rem; display: flex; align-items: center; gap: 8px; }
+    .mx-tx-date { font-size: 0.65rem; color: var(--muted); opacity: 0.6; }
+    .reclassify-select { font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; border: 1px solid var(--border); background: var(--bg); color: var(--muted); padding: 2px 4px; outline: none; cursor: pointer; display: none; }
+    .mx-tx:hover .reclassify-select { display: inline-block; }
+    .caret { font-size: 0.55rem; transition: transform 0.18s; display: inline-block; color: var(--muted); }
     .caret.open { transform: rotate(90deg); }
-    .sub-rows { }
-    .sub-rows.collapsed .matrix-row.sub-row { display: none; }
+    .hidden { display: none !important; }
 
-    /* ── TREND MATRIX ── */
-    .trend-matrix { border: 1px solid var(--border); background: var(--surface); margin-bottom: 24px; }
-    .trend-header { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap: 0; border-bottom: 1px solid var(--border); background: var(--bg); padding: 8px 16px; }
-    .trend-header span { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); text-align: right; }
-    .trend-header span:first-child { text-align: left; }
-    .trend-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr; gap: 0; padding: 10px 16px; border-bottom: 1px solid var(--grid); align-items: center; }
-    .trend-row:last-child { border-bottom: none; }
-    .trend-row:hover { background: var(--bg); }
-    .trend-val { text-align: right; font-size: 0.8rem; font-weight: 300; }
-    .trend-diff { text-align: right; font-size: 0.75rem; }
-    .trend-diff.up { color: var(--negative); }
-    .trend-diff.down { color: var(--positive); }
+    /* trend matrix */
+    .trend { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .tr-head { display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1fr; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .tr-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); text-align: right; }
+    .tr-head span:first-child { text-align: left; }
+    .tr-row { display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1fr; padding: 8px 14px; border-bottom: 1px solid var(--grid); align-items: center; }
+    .tr-row:last-child { border-bottom: none; }
+    .tr-row:hover { background: var(--bg); }
+    .tr-val { text-align: right; font-weight: 300; }
+    .tr-diff { text-align: right; font-size: 0.72rem; }
+    .tr-diff.up { color: var(--neg); }
+    .tr-diff.dn { color: var(--pos); }
 
-    /* ── RECURRING ── */
-    .recurring-list { border: 1px solid var(--border); background: var(--surface); margin-bottom: 24px; }
-    .recurring-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 0; padding: 10px 16px; border-bottom: 1px solid var(--grid); align-items: center; font-size: 0.8rem; }
-    .recurring-row:last-child { border-bottom: none; }
-    .recurring-row:hover { background: var(--bg); }
-    .recurring-header { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
-    .recurring-header span { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-    .rec-name { font-size: 0.82rem; }
-    .rec-val { text-align: right; }
-    .rec-badge { display: inline-block; font-size: 0.65rem; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); }
+    /* recurring */
+    .recur { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .recur-head { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .recur-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); }
+    .recur-head span:not(:first-child) { text-align: right; }
+    .recur-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; padding: 9px 14px; border-bottom: 1px solid var(--grid); align-items: center; }
+    .recur-row:last-child { border-bottom: none; }
+    .recur-row:hover { background: var(--bg); }
+    .recur-val { text-align: right; }
+    .badge { font-size: 0.62rem; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); }
 
-    /* ── ROTH POSITIONS ── */
-    .positions-list { border: 1px solid var(--border); background: var(--surface); margin-bottom: 24px; }
-    .positions-header { display: grid; grid-template-columns: 80px 2fr 1fr 1fr 1fr 1fr; gap: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
-    .positions-header span { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); text-align: right; }
-    .positions-header span:first-child, .positions-header span:nth-child(2) { text-align: left; }
-    .position-row { display: grid; grid-template-columns: 80px 2fr 1fr 1fr 1fr 1fr; gap: 0; padding: 10px 16px; border-bottom: 1px solid var(--grid); align-items: center; font-size: 0.8rem; }
-    .position-row:last-child { border-bottom: none; }
-    .position-row:hover { background: var(--bg); }
-    .pos-symbol { font-weight: 500; font-size: 0.82rem; }
+    /* portfolio */
+    .pos-table { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .pos-head { display: grid; grid-template-columns: 70px 2fr 1fr 1fr 1fr 1fr; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .pos-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); text-align: right; }
+    .pos-head span:first-child, .pos-head span:nth-child(2) { text-align: left; }
+    .pos-row { display: grid; grid-template-columns: 70px 2fr 1fr 1fr 1fr 1fr; padding: 9px 14px; border-bottom: 1px solid var(--grid); align-items: center; }
+    .pos-row:last-child { border-bottom: none; }
+    .pos-row:hover { background: var(--bg); }
+    .pos-sym { font-weight: 500; font-size: 0.8rem; }
     .pos-val { text-align: right; font-weight: 300; }
-    .pos-gain { text-align: right; font-size: 0.75rem; }
+    .pos-gain { text-align: right; font-size: 0.72rem; }
 
-    /* ── TRANSACTIONS ── */
-    .tx-table { border: 1px solid var(--border); background: var(--surface); }
-    .tx-filters { padding: 12px 16px; border-bottom: 1px solid var(--border); display: flex; gap: 12px; align-items: center; background: var(--bg); flex-wrap: wrap; }
-    .tx-filters select { font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; border: 1px solid var(--border); background: var(--surface); color: var(--ink); padding: 4px 8px; outline: none; cursor: pointer; }
-    .tx-header { display: grid; grid-template-columns: 100px 3fr 1fr 80px 100px 100px; padding: 8px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
-    .tx-header span { font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); }
-    .tx-header span:nth-child(5), .tx-header span:nth-child(6) { text-align: right; }
-    .tx-row { display: grid; grid-template-columns: 100px 3fr 1fr 80px 100px 100px; padding: 9px 16px; border-bottom: 1px solid var(--grid); font-size: 0.78rem; align-items: center; transition: background 0.1s; }
+    /* transactions */
+    .tx-wrap { border: 1px solid var(--border); background: var(--surface); }
+    .tx-filters { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; background: var(--bg); flex-wrap: wrap; }
+    .tx-filters select { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; border: 1px solid var(--border); background: var(--surface); color: var(--ink); padding: 4px 8px; outline: none; cursor: pointer; }
+    .tx-head { display: grid; grid-template-columns: 90px 2.5fr 1fr 80px 90px 90px; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .tx-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); }
+    .tx-head span:nth-child(5), .tx-head span:nth-child(6) { text-align: right; }
+    .tx-row { display: grid; grid-template-columns: 90px 2.5fr 1fr 80px 90px 90px; padding: 8px 14px; border-bottom: 1px solid var(--grid); font-size: 0.75rem; align-items: center; }
     .tx-row:last-child { border-bottom: none; }
     .tx-row:hover { background: var(--bg); }
-    .tx-date { color: var(--muted); font-size: 0.72rem; }
-    .tx-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 16px; }
-    .tx-cat { color: var(--muted); font-size: 0.72rem; }
-    .tx-badge { font-size: 0.65rem; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); white-space: nowrap; }
-    .tx-badge.debit-badge { border-color: #C5DEC9; color: var(--positive); }
-    .tx-badge.credit-badge { border-color: #F0D9B5; color: var(--warn); }
-    .tx-badge.transfer-badge { }
-    .tx-debit  { text-align: right; color: var(--negative); }
-    .tx-credit { text-align: right; color: var(--positive); }
-    .tx-empty  { padding: 40px 16px; text-align: center; color: var(--muted); font-size: 0.78rem; }
+    .tx-date { color: var(--muted); font-size: 0.68rem; }
+    .tx-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+    .tx-cat { color: var(--muted); font-size: 0.68rem; }
+    .tx-badge { font-size: 0.62rem; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); }
+    .tx-badge.db { border-color: #C5DEC9; color: var(--pos); }
+    .tx-badge.cr { border-color: #F0D9B5; color: var(--warn); }
+    .tx-dr { text-align: right; color: var(--neg); }
+    .tx-cr { text-align: right; color: var(--pos); }
+    .tx-empty { padding: 36px 14px; text-align: center; color: var(--muted); font-size: 0.75rem; }
 
-    /* ── SETTINGS ── */
-    .settings-block { border: 1px solid var(--border); background: var(--surface); padding: 24px; margin-bottom: 16px; }
-    .settings-block h3 { font-size: 0.72rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 20px; font-weight: 400; }
-    .settings-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
-    .field label { display: block; font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
-    .field input { width: 100%; padding: 7px 10px; border: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 0.82rem; color: var(--ink); background: var(--bg); outline: none; transition: border-color 0.15s; }
+    /* settings */
+    .settings-block { border: 1px solid var(--border); background: var(--surface); padding: 22px; margin-bottom: 14px; }
+    .settings-block h3 { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 18px; font-weight: 400; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+    .field label { display: block; font-size: 0.65rem; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 5px; }
+    .field input { width: 100%; padding: 7px 9px; border: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--ink); background: var(--bg); outline: none; transition: border-color 0.15s; }
     .field input:focus { border-color: var(--ink); background: #fff; }
-    .field .hint { font-size: 0.68rem; color: var(--muted); margin-top: 4px; }
-    .save-btn { border: 1px solid var(--ink); background: none; padding: 7px 20px; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--ink); cursor: pointer; transition: all 0.15s; letter-spacing: 0.04em; }
+    .field .hint { font-size: 0.65rem; color: var(--muted); margin-top: 3px; }
+    .save-btn { border: 1px solid var(--ink); background: none; padding: 6px 18px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink); cursor: pointer; transition: all 0.15s; }
     .save-btn:hover { background: var(--ink); color: #fff; }
 
-    /* ── DATA BANNER ── */
-    .data-banner { border: 1px solid var(--border); background: var(--surface); padding: 10px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; font-size: 0.72rem; color: var(--muted); }
-    .refresh-link { color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
-
-    /* ── TOAST ── */
-    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(12px); background: var(--ink); color: #fff; padding: 8px 16px; font-size: 0.75rem; opacity: 0; transition: all 0.2s; pointer-events: none; z-index: 999; letter-spacing: 0.04em; }
+    /* toast */
+    .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--ink); color: #fff; padding: 7px 14px; font-size: 0.72rem; opacity: 0; transition: all 0.2s; pointer-events: none; z-index: 999; }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* ── CHARTS ── */
-    .chart-card { border: 1px solid var(--border); background: var(--surface); padding: 20px; margin-bottom: 16px; }
-    .chart-wrap { position: relative; height: 200px; }
-
-    /* ── UTILS ── */
+    /* utils */
+    .pos { color: var(--pos); }
+    .neg { color: var(--neg); }
     #dashboard { display: none; }
     .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-    @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
-    .fade-in { animation: fadeIn 0.3s ease both; }
-    @media (max-width: 900px) { .nw-grid, .summary-grid { grid-template-columns: 1fr 1fr; } .two-col { grid-template-columns: 1fr; } .matrix-header, .matrix-row { grid-template-columns: 2fr 1fr 1fr 1fr; } .matrix-header span:last-child, .matrix-row .row-bar-cell { display: none; } }
+    @media (max-width:900px) { .card-grid.cols5,.card-grid.cols4 { grid-template-columns:1fr 1fr; } .two-col { grid-template-columns:1fr; } }
   </style>
 </head>
 <body>
 
 <header>
   <div class="logo">finance<span>.dashboard</span></div>
-  <div class="header-right">
-    <span class="user-tag" id="userTag"></span>
+  <div class="hdr-right">
+    <span id="userTag"></span>
     <span id="lastUpdated"></span>
     <button class="logout-btn" onclick="logout()">sign out</button>
   </div>
 </header>
 
-<div class="container">
+<div class="wrap">
 
-  <!-- LOADING -->
-  <div class="status-screen" id="loadingScreen">
-    <div class="spinner"></div>
-    <div>loading data…</div>
-  </div>
+  <div class="status" id="loadingScreen"><div class="spinner"></div><div>loading data…</div></div>
 
-  <!-- ERROR -->
-  <div class="status-screen" id="errorScreen" style="display:none">
-    <div style="font-size:1.2rem; margin-bottom:12px">—</div>
+  <div class="status" id="errorScreen" style="display:none">
+    <div style="font-size:1rem;margin-bottom:10px">—</div>
     <div>no data found</div>
-    <div style="margin-top:6px; font-size:0.72rem">expected: <span id="expectedPath"></span></div>
+    <div style="margin-top:6px;font-size:0.68rem">expected: <span id="expectedPath"></span></div>
     <button class="retry-btn" onclick="loadData()">retry</button>
   </div>
 
-  <!-- DASHBOARD -->
   <div id="dashboard">
 
-    <div class="data-banner">
+    <div class="banner">
       <span><span id="filesLoaded"></span> files loaded &nbsp;·&nbsp; <span id="dataPathHint"></span></span>
-      <span class="refresh-link" onclick="loadData()">↺ refresh</span>
+      <span class="refresh" onclick="loadData()">↺ refresh</span>
     </div>
 
     <div class="nav">
@@ -252,181 +226,84 @@
       <button class="nav-btn" onclick="switchTab('settings')">settings</button>
     </div>
 
-    <!-- ═══ OVERVIEW ═══ -->
-    <div class="tab-panel active fade-in" id="tab-overview">
-
-      <!-- Net Worth -->
-      <div class="section-label">net worth</div>
-      <div class="nw-grid">
-        <div class="nw-card">
-          <div class="nw-label">checking</div>
-          <div class="nw-value" id="nwChecking">—</div>
-          <div class="nw-sub">current balance</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">credit card</div>
-          <div class="nw-value" id="nwCredit">—</div>
-          <div class="nw-sub">outstanding balance</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">high yield savings</div>
-          <div class="nw-value" id="nwHysa">—</div>
-          <div class="nw-sub">manual entry</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">roth ira</div>
-          <div class="nw-value" id="nwRoth">—</div>
-          <div class="nw-sub">current positions</div>
-        </div>
-        <div class="nw-card total">
-          <div class="nw-label">total net worth</div>
-          <div class="nw-value" id="nwTotal">—</div>
-          <div class="nw-sub">all accounts</div>
-        </div>
+    <!-- overview -->
+    <div class="tab active" id="tab-overview">
+      <div class="slabel">net worth</div>
+      <div class="card-grid cols5">
+        <div class="card"><div class="card-label">checking</div><div class="card-value" id="nwChecking">—</div><div class="card-sub">current balance</div></div>
+        <div class="card"><div class="card-label">credit card</div><div class="card-value" id="nwCredit">—</div><div class="card-sub">outstanding balance</div></div>
+        <div class="card"><div class="card-label">high yield savings</div><div class="card-value pos" id="nwHysa">—</div><div class="card-sub">earning yield</div></div>
+        <div class="card"><div class="card-label">roth ira</div><div class="card-value pos" id="nwRoth">—</div><div class="card-sub">current positions</div></div>
+        <div class="card dark"><div class="card-label">total net worth</div><div class="card-value" id="nwTotal">—</div><div class="card-sub">all accounts</div></div>
       </div>
 
-      <!-- Month Summary -->
-      <div class="section-label" style="margin-top:4px">
+      <div class="slabel" style="margin-top:4px">
         this month &nbsp;·&nbsp;
-        <select id="overviewMonth" onchange="renderOverview()" style="font-family:'IBM Plex Mono',monospace; font-size:0.68rem; border:none; background:transparent; color:var(--muted); outline:none; cursor:pointer;"></select>
+        <select id="overviewMonth" onchange="renderOverview()" style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;border:none;background:transparent;color:var(--muted);outline:none;cursor:pointer;"></select>
       </div>
-      <div class="summary-grid">
-        <div class="summary-card">
-          <div class="s-label">income</div>
-          <div class="s-value pos" id="ovIncome">—</div>
-          <div class="s-sub">deposits this month</div>
-        </div>
-        <div class="summary-card">
-          <div class="s-label">spent</div>
-          <div class="s-value" id="ovSpent">—</div>
-          <div class="s-sub">excl. transfers</div>
-        </div>
-        <div class="summary-card">
-          <div class="s-label">remaining</div>
-          <div class="s-value" id="ovRemaining">—</div>
-          <div class="s-sub">income minus spent</div>
-          <div class="s-bar"><div class="s-bar-fill" id="ovRemainingBar" style="width:0%"></div></div>
-        </div>
-        <div class="summary-card">
-          <div class="s-label">savings rate</div>
-          <div class="s-value" id="ovSavingsRate">—</div>
-          <div class="s-sub">target 24%</div>
-          <div class="s-bar"><div class="s-bar-fill" id="ovSavingsBar" style="width:0%"></div></div>
-        </div>
+      <div class="card-grid cols4">
+        <div class="card"><div class="card-label">income</div><div class="card-value pos" id="ovIncome">—</div><div class="card-sub">deposits this month</div></div>
+        <div class="card"><div class="card-label">spent</div><div class="card-value" id="ovSpent">—</div><div class="card-sub">excl. transfers</div></div>
+        <div class="card"><div class="card-label">remaining</div><div class="card-value" id="ovRemaining">—</div><div class="card-sub">income minus spent</div><div class="bar2"><div class="bar2-fill" id="ovRemBar" style="width:0%"></div></div></div>
+        <div class="card"><div class="card-label">savings rate</div><div class="card-value" id="ovSavRate">—</div><div class="card-sub">target 24%</div><div class="bar2"><div class="bar2-fill" id="ovSavBar" style="width:0%"></div></div></div>
       </div>
 
-      <!-- Stagnant vs Working -->
-      <div class="section-label">money at work</div>
-      <div class="nw-grid" style="grid-template-columns: 1fr 1fr 1fr;">
-        <div class="nw-card">
-          <div class="nw-label">stagnant</div>
-          <div class="nw-value" id="moneyStagnant">—</div>
-          <div class="nw-sub">checking + hysa</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">working</div>
-          <div class="nw-value pos" id="moneyWorking">—</div>
-          <div class="nw-sub">roth ira</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">working ratio</div>
-          <div class="nw-value" id="moneyRatio">—</div>
-          <div class="nw-sub">% of net worth invested</div>
-        </div>
+      <div class="slabel">money at work</div>
+      <div class="card-grid cols3">
+        <div class="card"><div class="card-label">stagnant</div><div class="card-value" id="mStagnant">—</div><div class="card-sub">checking only</div></div>
+        <div class="card"><div class="card-label">working</div><div class="card-value pos" id="mWorking">—</div><div class="card-sub">hysa + roth ira</div></div>
+        <div class="card"><div class="card-label">working ratio</div><div class="card-value" id="mRatio">—</div><div class="card-sub">% of net worth invested</div></div>
       </div>
-
     </div>
 
-    <!-- ═══ BUDGET ═══ -->
-    <div class="tab-panel fade-in" id="tab-budget">
-      <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:20px;">
-        <div class="section-label" style="margin:0">budget vs actual</div>
-        <select id="budgetMonth" onchange="renderBudget()" style="font-family:'IBM Plex Mono',monospace; font-size:0.75rem; border:1px solid var(--border); background:var(--surface); color:var(--ink); padding:4px 8px; outline:none; cursor:pointer;"></select>
+    <!-- budget -->
+    <div class="tab" id="tab-budget">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div class="slabel" style="margin:0">budget vs actual</div>
+        <select id="budgetMonth" onchange="renderBudget()" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;border:1px solid var(--border);background:var(--surface);color:var(--ink);padding:4px 8px;outline:none;cursor:pointer;"></select>
       </div>
-
-      <!-- Budget Matrix -->
       <div class="matrix" id="budgetMatrix"></div>
+      <div class="card-grid cols3" style="margin-top:14px;">
+        <div class="card"><div class="card-label">monthly income</div><div class="card-value" id="bTotal">—</div></div>
+        <div class="card"><div class="card-label">total spent</div><div class="card-value" id="bSpent">—</div></div>
+        <div class="card" style="background:var(--bg)"><div class="card-label">leftover / to invest</div><div class="card-value pos" id="bLeftover">—</div></div>
+      </div>
+    </div>
 
-      <!-- Leftover -->
-      <div class="nw-grid" style="grid-template-columns:1fr 1fr 1fr; margin-top:16px;">
-        <div class="nw-card">
-          <div class="nw-label">total budget</div>
-          <div class="nw-value" id="budgetTotal">—</div>
-          <div class="nw-sub">monthly income</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">total spent</div>
-          <div class="nw-value" id="budgetSpent">—</div>
-          <div class="nw-sub">all categories</div>
-        </div>
-        <div class="nw-card" style="background:var(--bg);">
-          <div class="nw-label">leftover</div>
-          <div class="nw-value pos" id="budgetLeftover">—</div>
-          <div class="nw-sub">available to invest</div>
+    <!-- trends -->
+    <div class="tab" id="tab-trends">
+      <div class="slabel">3-month spending by category</div>
+      <div class="trend" id="trendMatrix"></div>
+    </div>
+
+    <!-- recurring -->
+    <div class="tab" id="tab-recurring">
+      <div class="slabel">detected recurring expenses</div>
+      <div class="recur" id="recurringList"></div>
+    </div>
+
+    <!-- portfolio -->
+    <div class="tab" id="tab-portfolio">
+      <div class="slabel">roth ira — current positions</div>
+      <div class="pos-table" id="positionsList"></div>
+      <div class="card-grid cols3" style="margin-top:14px;">
+        <div class="card"><div class="card-label">total value</div><div class="card-value" id="rothTotal">—</div></div>
+        <div class="card"><div class="card-label">total gain</div><div class="card-value" id="rothGain">—</div></div>
+        <div class="card"><div class="card-label">today's change</div><div class="card-value" id="rothToday">—</div></div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="slabel">high yield savings</div>
+        <div class="card-grid cols3">
+          <div class="card"><div class="card-label">balance</div><div class="card-value pos" id="hysaBal">—</div><div class="card-sub">manual entry</div></div>
+          <div class="card"><div class="card-label">interest earned</div><div class="card-value pos" id="hysaInt">—</div><div class="card-sub">from uploads</div></div>
+          <div class="card"><div class="card-label">last transaction</div><div class="card-value" id="hysaLast">—</div><div class="card-sub" id="hysaLastDate"></div></div>
         </div>
       </div>
     </div>
 
-    <!-- ═══ TRENDS ═══ -->
-    <div class="tab-panel fade-in" id="tab-trends">
-      <div class="section-label">3-month spending trends by category</div>
-      <div class="trend-matrix" id="trendMatrix"></div>
-    </div>
-
-    <!-- ═══ RECURRING ═══ -->
-    <div class="tab-panel fade-in" id="tab-recurring">
-      <div class="section-label">detected recurring expenses</div>
-      <div class="recurring-list" id="recurringList"></div>
-    </div>
-
-    <!-- ═══ PORTFOLIO ═══ -->
-    <div class="tab-panel fade-in" id="tab-portfolio">
-      <div class="section-label">roth ira — current positions</div>
-      <div class="positions-list" id="positionsList"></div>
-
-      <div class="nw-grid" style="grid-template-columns:1fr 1fr 1fr; margin-top:16px;">
-        <div class="nw-card">
-          <div class="nw-label">total value</div>
-          <div class="nw-value" id="rothTotal">—</div>
-          <div class="nw-sub">all positions</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">total gain</div>
-          <div class="nw-value pos" id="rothGain">—</div>
-          <div class="nw-sub">unrealized</div>
-        </div>
-        <div class="nw-card">
-          <div class="nw-label">today's change</div>
-          <div class="nw-value" id="rothToday">—</div>
-          <div class="nw-sub">day gain/loss</div>
-        </div>
-      </div>
-
-      <div style="margin-top:16px;">
-        <div class="section-label">high yield savings</div>
-        <div class="nw-grid" style="grid-template-columns:1fr 1fr 1fr;">
-          <div class="nw-card">
-            <div class="nw-label">balance</div>
-            <div class="nw-value pos" id="hysaBalance">—</div>
-            <div class="nw-sub">manual entry</div>
-          </div>
-          <div class="nw-card">
-            <div class="nw-label">interest earned</div>
-            <div class="nw-value pos" id="hysaInterest">—</div>
-            <div class="nw-sub">from uploads</div>
-          </div>
-          <div class="nw-card">
-            <div class="nw-label">last transaction</div>
-            <div class="nw-value" id="hysaLast">—</div>
-            <div class="nw-sub" id="hysaLastDate"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ═══ TRANSACTIONS ═══ -->
-    <div class="tab-panel fade-in" id="tab-transactions">
-      <div class="tx-table">
+    <!-- transactions -->
+    <div class="tab" id="tab-transactions">
+      <div class="tx-wrap">
         <div class="tx-filters">
           <select id="filterMonth" onchange="renderTable()"><option value="all">all months</option></select>
           <select id="filterAccount" onchange="renderTable()">
@@ -440,7 +317,7 @@
             <option value="income">income</option>
           </select>
         </div>
-        <div class="tx-header">
+        <div class="tx-head">
           <span>date</span><span>description</span><span>category</span>
           <span>account</span><span>debit</span><span>credit</span>
         </div>
@@ -448,49 +325,31 @@
       </div>
     </div>
 
-    <!-- ═══ SETTINGS ═══ -->
-    <div class="tab-panel fade-in" id="tab-settings">
+    <!-- settings -->
+    <div class="tab" id="tab-settings">
       <div class="settings-block">
         <h3>accounts</h3>
-        <div class="settings-fields">
-          <div class="field">
-            <label>monthly rent</label>
-            <input type="number" id="settingRent" placeholder="2480"/>
-            <div class="hint">fixed housing cost — not flagged as over budget</div>
-          </div>
-          <div class="field">
-            <label>hysa balance</label>
-            <input type="number" id="settingHysa" placeholder="31138"/>
-            <div class="hint">update manually each month</div>
-          </div>
-          <div class="field">
-            <label>income override</label>
-            <input type="number" id="settingIncomeOverride" placeholder="auto-detected"/>
-            <div class="hint">leave blank to auto-detect from deposits</div>
-          </div>
-          <div class="field">
-            <label>income keyword</label>
-            <input type="text" id="settingIncomeKeyword" placeholder="e.g. direct deposit"/>
-            <div class="hint">filter deposits to only count paychecks</div>
-          </div>
+        <div class="fields">
+          <div class="field"><label>monthly rent</label><input type="number" id="settingRent"/><div class="hint">fixed — never flagged over budget</div></div>
+          <div class="field"><label>hysa balance</label><input type="number" id="settingHysa"/><div class="hint">update manually each month</div></div>
+          <div class="field"><label>income override</label><input type="number" id="settingIncomeOverride" placeholder="auto-detected"/><div class="hint">leave blank to auto-detect</div></div>
+          <div class="field"><label>income keyword</label><input type="text" id="settingIncomeKeyword" placeholder="e.g. direct deposit"/><div class="hint">filter deposits to paychecks only</div></div>
         </div>
         <button class="save-btn" onclick="saveSettings()">save settings</button>
       </div>
-
       <div class="settings-block">
-        <h3>how to update data</h3>
-        <div style="color:var(--muted); font-size:0.78rem; line-height:2;">
+        <h3>how to update data monthly</h3>
+        <div style="color:var(--muted);font-size:0.75rem;line-height:2.2;">
           <div>1. export csvs from your bank</div>
           <div>2. rename: Debit022026.csv / Credit022026.csv / HYSA022026.csv / Roth022026.csv</div>
           <div>3. upload to github → <span id="settingsPath" style="color:var(--ink)"></span></div>
-          <div>4. click ↺ refresh in the banner above</div>
+          <div>4. click ↺ refresh above</div>
         </div>
       </div>
-
       <div class="settings-block">
         <h3>budget ratios</h3>
-        <div style="font-size:0.78rem; line-height:2.2; color:var(--muted);">
-          <div style="display:grid; grid-template-columns:2fr 1fr; max-width:300px;">
+        <div style="font-size:0.75rem;line-height:2.4;color:var(--muted);">
+          <div style="display:grid;grid-template-columns:2fr 1fr;max-width:260px;">
             <span>housing (fixed)</span><span style="color:var(--ink)">41%</span>
             <span>other needs</span><span style="color:var(--ink)">15%</span>
             <span>wants</span><span style="color:var(--ink)">20%</span>
@@ -500,11 +359,10 @@
       </div>
     </div>
 
-  </div><!-- /#dashboard -->
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
-
 <script src="config.js"></script>
 <script src="app.js"></script>
 </body>
