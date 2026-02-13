@@ -1,43 +1,16 @@
 /**
- * Finance Dashboard — app.js
- * Auto-detects monthly CSV files (Debit012026.csv / Credit012026.csv)
+ * finance.dashboard — app.js v3
  */
 
-// ─── State ───────────────────────────────────────────────
-let allTx          = [];
-let charts         = {};
-let currentUser    = null;
-let dataFolder     = null;
-let budgetSettings = {};
-let loadedMonths   = [];
-
-// ─── Budget Config (50/30/20) ────────────────────────────
-const BUDGET_RULES = {
-  needs: {
-    label: 'Needs', target: 0.50, color: '#2D5A3D',
-    categories: {
-      'Housing':        { pct: 0.30, fixed: true  },
-      'Groceries':      { pct: 0.08, fixed: false },
-      'Transportation': { pct: 0.07, fixed: false },
-      'Utilities':      { pct: 0.05, fixed: false },
-    }
-  },
-  wants: {
-    label: 'Wants', target: 0.30, color: '#C47B2B',
-    categories: {
-      'Dining':            { pct: 0.08, fixed: false },
-      'Shopping':          { pct: 0.08, fixed: false },
-      'Entertainment':     { pct: 0.07, fixed: false },
-      'Health & Fitness':  { pct: 0.04, fixed: false },
-      'Pharmacy':          { pct: 0.02, fixed: false },
-      'Business Services': { pct: 0.01, fixed: false },
-    }
-  },
-  savings: {
-    label: 'Savings', target: 0.20, color: '#5B7FA6',
-    categories: {}
-  }
-};
+// ─── State ────────────────────────────────────────────────
+let allTx       = [];
+let rothPositions = [];
+let hysaTx      = [];
+let charts      = {};
+let currentUser = null;
+let dataFolder  = null;
+let settings    = {};
+let loadedFiles = [];
 
 // ─── Init ─────────────────────────────────────────────────
 (function init() {
@@ -45,487 +18,551 @@ const BUDGET_RULES = {
     window.location.href = 'index.html';
     return;
   }
-
   currentUser = sessionStorage.getItem('finance_user');
   dataFolder  = sessionStorage.getItem('finance_dataFolder');
   const displayName = sessionStorage.getItem('finance_displayName') || currentUser;
 
-  // Merge budget settings: config defaults → overridden by localStorage
+  // Merge settings: config → session → localStorage
+  const configUser    = window.FINANCE_CONFIG.users[currentUser];
   const sessionSettings = JSON.parse(sessionStorage.getItem('finance_budgetSettings') || '{}');
-  const localSettings   = JSON.parse(localStorage.getItem('finance_budget_' + currentUser) || '{}');
-  budgetSettings = { rentAmount: 0, incomeOverride: null, rentKeyword: '', incomeKeyword: '', ...sessionSettings, ...localSettings };
+  const localSettings   = JSON.parse(localStorage.getItem('finance_settings_' + currentUser) || '{}');
+  settings = { ...configUser.settings, ...sessionSettings, ...localSettings };
 
-  // Update UI
-  document.getElementById('userPill').textContent    = displayName;
-  document.getElementById('dataPathHint').textContent = dataFolder + '/';
-  document.getElementById('expectedPath').textContent = dataFolder + '/Debit012026.csv, Credit012026.csv, etc.';
-  const sp = document.getElementById('settingsDataPath');
-  if (sp) sp.textContent = dataFolder + '/';
+  document.getElementById('userTag').textContent        = displayName;
+  document.getElementById('expectedPath').textContent   = dataFolder + '/Debit012026.csv';
+  document.getElementById('settingsPath').textContent   = dataFolder + '/';
 
   populateSettingsForm();
   loadData();
 })();
 
-function logout() {
-  sessionStorage.clear();
-  window.location.href = 'index.html';
+function logout() { sessionStorage.clear(); window.location.href = 'index.html'; }
+
+// ─── Settings ─────────────────────────────────────────────
+function populateSettingsForm() {
+  setVal('settingRent',          settings.rentAmount    || '');
+  setVal('settingHysa',          settings.hysaBalance   || '');
+  setVal('settingIncomeOverride', settings.incomeOverride || '');
+  setVal('settingIncomeKeyword',  settings.incomeKeyword || '');
+}
+function setVal(id, val) { const el = document.getElementById(id); if (el) el.value = val; }
+
+function saveSettings() {
+  settings.rentAmount     = parseFloat(document.getElementById('settingRent').value) || 0;
+  settings.hysaBalance    = parseFloat(document.getElementById('settingHysa').value) || 0;
+  settings.incomeOverride = parseFloat(document.getElementById('settingIncomeOverride').value) || null;
+  settings.incomeKeyword  = document.getElementById('settingIncomeKeyword').value.trim();
+  localStorage.setItem('finance_settings_' + currentUser, JSON.stringify(settings));
+  if (allTx.length > 0) renderAll();
+  showToast('settings saved');
 }
 
-// ─── Auto-Detect & Load All Monthly CSVs ─────────────────
+// ─── Load Data ────────────────────────────────────────────
 async function loadData() {
   showScreen('loading');
+  const cfg   = window.FINANCE_CONFIG;
+  const base  = cfg.githubPagesBase;
+  const start = cfg.dataStartDate;
+  const now   = new Date();
 
-  const config    = window.FINANCE_CONFIG;
-  const base      = config.githubPagesBase;
-  const start     = config.dataStartDate;
-  const now       = new Date();
-
-  // Build list of all months from start date to current month
+  // build month list
   const months = [];
-  let y = start.year;
-  let m = start.month;
+  let y = start.year, m = start.month;
   while (y < now.getFullYear() || (y === now.getFullYear() && m <= now.getMonth() + 1)) {
     months.push({ month: m, year: y });
-    m++;
-    if (m > 12) { m = 1; y++; }
+    if (++m > 12) { m = 1; y++; }
   }
 
-  // Build file name: MMYYYY e.g. "012026"
-  function fileTag(mo, yr) {
-    return String(mo).padStart(2, '0') + String(yr);
-  }
-
-  // Try to fetch each month — silently skip 404s
+  function tag(mo, yr) { return String(mo).padStart(2,'0') + yr; }
   async function tryFetch(url) {
     try {
-      const res = await fetch(url + '?t=' + Date.now());
-      if (!res.ok) return null;
-      return res.text();
-    } catch {
-      return null;
-    }
+      const r = await fetch(url + '?t=' + Date.now());
+      return r.ok ? r.text() : null;
+    } catch { return null; }
   }
 
-  // Fetch all months in parallel
-  const results = await Promise.all(
-    months.map(async ({ month, year }) => {
-      const tag        = fileTag(month, year);
-      const debitUrl   = `${base}/${dataFolder}/Debit${tag}.csv`;
-      const creditUrl  = `${base}/${dataFolder}/Credit${tag}.csv`;
-      const [debitText, creditText] = await Promise.all([
-        tryFetch(debitUrl),
-        tryFetch(creditUrl)
-      ]);
-      return { month, year, tag, debitText, creditText };
-    })
-  );
+  loadedFiles = [];
+  let allDebit = [], allCredit = [];
+  rothPositions = [];
+  hysaTx = [];
 
-  // Parse and combine all found files
-  let allDebit  = [];
-  let allCredit = [];
-  loadedMonths  = [];
+  const results = await Promise.all(months.map(async ({ month, year }) => {
+    const t = tag(month, year);
+    const [dt, ct, ht, rt] = await Promise.all([
+      tryFetch(`${base}/${dataFolder}/Debit${t}.csv`),
+      tryFetch(`${base}/${dataFolder}/Credit${t}.csv`),
+      tryFetch(`${base}/${dataFolder}/HYSA${t}.csv`),
+      tryFetch(`${base}/${dataFolder}/Roth${t}.csv`),
+    ]);
+    return { t, dt, ct, ht, rt };
+  }));
 
-  results.forEach(({ month, year, tag, debitText, creditText }) => {
-    if (debitText) {
-      const rows = parseCSVText(debitText);
-      if (rows.length) { allDebit.push(...rows); loadedMonths.push(`Debit${tag}`); }
-    }
-    if (creditText) {
-      const rows = parseCSVText(creditText);
-      if (rows.length) { allCredit.push(...rows); loadedMonths.push(`Credit${tag}`); }
-    }
+  // use last found Roth (most recent)
+  let lastRoth = null;
+  results.forEach(({ t, dt, ct, ht, rt }) => {
+    if (dt) { allDebit.push(...parseCSV(dt));  loadedFiles.push(`Debit${t}`); }
+    if (ct) { allCredit.push(...parseCSV(ct)); loadedFiles.push(`Credit${t}`); }
+    if (ht) { hysaTx.push(...parseHYSA(ht));   loadedFiles.push(`HYSA${t}`); }
+    if (rt) { lastRoth = rt; loadedFiles.push(`Roth${t}`); }
   });
 
-  if (!allDebit.length && !allCredit.length) {
-    showScreen('error');
-    return;
-  }
+  if (lastRoth) rothPositions = parseRoth(lastRoth);
 
-  // Normalize and combine
+  if (!allDebit.length && !allCredit.length) { showScreen('error'); return; }
+
   allTx = detectTransfers([
     ...allDebit.map(r  => normalizeRow(r, 'debit')),
     ...allCredit.map(r => normalizeRow(r, 'credit'))
   ]);
   allTx.sort((a, b) => b.date - a.date);
 
-  // Update banner with loaded files info
-  const bannerHint = document.getElementById('dataPathHint');
-  if (bannerHint) {
-    bannerHint.textContent = dataFolder + '/  (' + loadedMonths.length + ' files loaded)';
-  }
+  document.getElementById('filesLoaded').textContent  = loadedFiles.length;
+  document.getElementById('dataPathHint').textContent = dataFolder + '/';
+  document.getElementById('lastUpdated').textContent  = 'updated ' + new Date().toLocaleTimeString('en-US', { hour:'numeric', minute:'2-digit' }).toLowerCase();
 
-  populateMonthFilter();
-  renderDashboard();
+  populateFilters();
+  renderAll();
   showScreen('dashboard');
 }
 
-function showScreen(screen) {
-  document.getElementById('loadingScreen').style.display = screen === 'loading'   ? 'block' : 'none';
-  document.getElementById('errorScreen').style.display   = screen === 'error'     ? 'block' : 'none';
-  document.getElementById('dashboard').style.display     = screen === 'dashboard' ? 'block' : 'none';
+function showScreen(s) {
+  document.getElementById('loadingScreen').style.display = s==='loading'   ? 'block' : 'none';
+  document.getElementById('errorScreen').style.display   = s==='error'     ? 'block' : 'none';
+  document.getElementById('dashboard').style.display     = s==='dashboard' ? 'block' : 'none';
 }
 
-// ─── CSV Parsing ─────────────────────────────────────────
-function parseCSVText(text) {
-  const result = Papa.parse(text, { header: true, skipEmptyLines: true });
-  return result.data || [];
+// ─── CSV Parsers ──────────────────────────────────────────
+function parseCSV(text) {
+  return Papa.parse(text, { header:true, skipEmptyLines:true }).data || [];
+}
+
+function parseHYSA(text) {
+  const rows = Papa.parse(text, { header:true, skipEmptyLines:true }).data || [];
+  return rows.map(r => ({
+    date:   parseDate(r['Transaction date'] || r['Date'] || ''),
+    desc:   (r['Description'] || '').trim(),
+    type:   (r['Type'] || '').trim(),
+    amount: parseAmt(r['Amount'] || '0'),
+  })).filter(r => r.date);
+}
+
+function parseRoth(text) {
+  const rows = Papa.parse(text, { header:true, skipEmptyLines:true }).data || [];
+  return rows.map(r => ({
+    symbol:       (r['Symbol'] || '').trim(),
+    description:  (r['Description'] || '').trim(),
+    quantity:     parseAmt(r['Quantity'] || '0'),
+    lastPrice:    parseAmt(r['Last Price'] || '0'),
+    currentValue: parseAmt(r['Current Value'] || '0'),
+    todayGL:      parseAmt(r['Today\'s Gain/Loss Dollar'] || '0'),
+    totalGL:      parseAmt(r['Total Gain/Loss Dollar'] || '0'),
+    totalGLPct:   parseAmt(r['Total Gain/Loss Percent'] || '0'),
+    pctAccount:   parseAmt(r['Percent Of Account'] || '0'),
+    costBasis:    parseAmt(r['Cost Basis Total'] || '0'),
+  })).filter(r => r.symbol);
 }
 
 function normalizeRow(row, accountType) {
-  const debitAmt  = parseFloat((row['Debit']   || '0').toString().replace(/,/g,'')) || 0;
-  const creditAmt = parseFloat((row['Credit']  || '0').toString().replace(/,/g,'')) || 0;
-  const balance   = parseFloat((row['Balance'] || '0').toString().replace(/,/g,'')) || 0;
   return {
-    date:          parseDate(row['Post Date'] || ''),
-    description:   (row['Description'] || '').trim(),
-    category:      (row['Classification'] || 'Uncategorized').trim(),
+    date:        parseDate(row['Post Date'] || ''),
+    description: (row['Description'] || '').trim(),
+    category:    (row['Classification'] || 'Uncategorized').trim(),
     accountType,
-    accountNumber: (row['Account Number'] || '').trim(),
-    debit: debitAmt, credit: creditAmt, balance,
-    status:     (row['Status'] || '').trim(),
-    isTransfer: false
+    debit:       parseAmt(row['Debit']   || '0'),
+    credit:      parseAmt(row['Credit']  || '0'),
+    balance:     parseAmt(row['Balance'] || '0'),
+    isTransfer:  false
   };
 }
 
-function parseDate(str) {
-  if (!str) return new Date();
-  const d = new Date(str);
-  return isNaN(d) ? new Date() : d;
+function parseAmt(s) {
+  return parseFloat(s.toString().replace(/[$,%]/g,'').replace(/,/g,'').trim()) || 0;
+}
+function parseDate(s) {
+  if (!s) return null;
+  const d = new Date(s);
+  return isNaN(d) ? null : d;
 }
 
 // ─── Transfer Detection ───────────────────────────────────
 function detectTransfers(txs) {
-  const WINDOW_MS = 3 * 24 * 60 * 60 * 1000;
-  txs.filter(t => t.accountType === 'credit' && t.credit > 0).forEach(payment => {
-    const match = txs.find(t =>
-      t.accountType === 'debit' && t.debit === payment.credit &&
-      Math.abs(t.date - payment.date) <= WINDOW_MS && !t.isTransfer
-    );
-    if (match) { payment.isTransfer = true; match.isTransfer = true; }
+  const W = 3 * 86400000;
+  txs.filter(t => t.accountType==='credit' && t.credit>0).forEach(p => {
+    const m = txs.find(t => t.accountType==='debit' && t.debit===p.credit && Math.abs(t.date-p.date)<=W && !t.isTransfer);
+    if (m) { p.isTransfer=true; m.isTransfer=true; }
   });
   return txs;
 }
 
 // ─── Helpers ─────────────────────────────────────────────
-function fmt(n) {
-  return '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+function fmt(n, decimals=2) {
+  const abs = Math.abs(n);
+  return '$' + abs.toLocaleString('en-US', { minimumFractionDigits:decimals, maximumFractionDigits:decimals });
 }
-function monthKey(date) {
-  return date.getFullYear() + '-' + String(date.getMonth()+1).padStart(2,'0');
-}
-function monthLabel(key) {
-  const [y,m] = key.split('-');
-  return new Date(y, m-1, 1).toLocaleString('en-US', { month:'short', year:'numeric' });
-}
-function getActiveTx() { return allTx.filter(t => !t.isTransfer); }
-function getMonths()    { return [...new Set(allTx.map(t => monthKey(t.date)))].sort(); }
+function fmtPct(n) { return (n>=0?'+':'') + n.toFixed(1) + '%'; }
+function monthKey(d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0'); }
+function monthLabel(k) { const [y,m]=k.split('-'); return new Date(y,m-1,1).toLocaleString('en-US',{month:'short',year:'numeric'}).toLowerCase(); }
+function getActive() { return allTx.filter(t => !t.isTransfer); }
+function getMonths() { return [...new Set(allTx.map(t => monthKey(t.date)))].sort(); }
+function showToast(msg) { const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),2500); }
 
-function showToast(msg) {
-  const t = document.getElementById('toast');
-  if (!t) return;
-  t.textContent = msg;
-  t.classList.add('show');
-  setTimeout(() => t.classList.remove('show'), 2500);
+// ─── Income Detection ─────────────────────────────────────
+function getMonthlyIncome(tx, mk) {
+  if (settings.incomeOverride) return settings.incomeOverride;
+  const kw = (settings.incomeKeyword||'').toLowerCase();
+  return tx.filter(t => monthKey(t.date)===mk && t.credit>0 && t.accountType==='debit' && !t.isTransfer &&
+                        (kw ? t.description.toLowerCase().includes(kw) : true))
+           .reduce((s,t)=>s+t.credit, 0);
 }
 
-// ─── Settings ────────────────────────────────────────────
-function populateSettingsForm() {
-  const fields = {
-    settingRent:           budgetSettings.rentAmount    || '',
-    settingIncomeOverride: budgetSettings.incomeOverride || '',
-    settingRentKeyword:    budgetSettings.rentKeyword   || '',
-    settingIncomeKeyword:  budgetSettings.incomeKeyword || '',
-  };
-  Object.entries(fields).forEach(([id, val]) => {
-    const el = document.getElementById(id);
-    if (el) el.value = val;
+// ─── Category Spend ───────────────────────────────────────
+function getCategorySpend(tx, cat, mk) {
+  if (cat === 'Housing') return settings.rentAmount || 0;
+  return tx.filter(t => monthKey(t.date)===mk && t.category===cat && t.debit>0 && !t.isTransfer)
+           .reduce((s,t)=>s+t.debit, 0);
+}
+
+// ─── Populate Filters ─────────────────────────────────────
+function populateFilters() {
+  const months = getMonths();
+  // transactions filter
+  const sel = document.getElementById('filterMonth');
+  sel.innerHTML = '<option value="all">all months</option>';
+  months.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=monthLabel(m); sel.appendChild(o); });
+
+  // budget month
+  const bsel = document.getElementById('budgetMonth');
+  bsel.innerHTML = '';
+  [...months].reverse().forEach((m,i) => {
+    const o=document.createElement('option'); o.value=m; o.textContent=monthLabel(m);
+    if (i===0) o.selected=true;
+    bsel.appendChild(o);
+  });
+
+  // overview month
+  const osel = document.getElementById('overviewMonth');
+  osel.innerHTML = '';
+  [...months].reverse().forEach((m,i) => {
+    const o=document.createElement('option'); o.value=m; o.textContent=monthLabel(m);
+    if (i===0) o.selected=true;
+    osel.appendChild(o);
   });
 }
 
-function saveBudgetSettings() {
-  budgetSettings.rentAmount     = parseFloat(document.getElementById('settingRent').value) || 0;
-  budgetSettings.incomeOverride = parseFloat(document.getElementById('settingIncomeOverride').value) || null;
-  budgetSettings.rentKeyword    = document.getElementById('settingRentKeyword').value.trim();
-  budgetSettings.incomeKeyword  = document.getElementById('settingIncomeKeyword').value.trim();
-  localStorage.setItem('finance_budget_' + currentUser, JSON.stringify(budgetSettings));
-  if (allTx.length > 0) renderDashboard();
-  showToast('Settings saved!');
-}
-
-// ─── Income & Spend Detection ─────────────────────────────
-function detectMonthlyIncome(tx, mk) {
-  if (budgetSettings.incomeOverride) return budgetSettings.incomeOverride;
-  const kw = (budgetSettings.incomeKeyword || '').toLowerCase();
-  return tx
-    .filter(t => monthKey(t.date)===mk && t.credit>0 && t.accountType==='debit' && !t.isTransfer &&
-                 (kw ? t.description.toLowerCase().includes(kw) : true))
-    .reduce((s,t) => s+t.credit, 0);
-}
-
-function getActualSpend(tx, category, mk) {
-  if (category === 'Housing') {
-    if (budgetSettings.rentKeyword) {
-      const kw = budgetSettings.rentKeyword.toLowerCase();
-      const found = tx
-        .filter(t => monthKey(t.date)===mk && t.debit>0 && t.description.toLowerCase().includes(kw))
-        .reduce((s,t) => s+t.debit, 0);
-      if (found > 0) return found;
-    }
-    return budgetSettings.rentAmount || 0;
-  }
-  return tx
-    .filter(t => monthKey(t.date)===mk && t.category===category && t.debit>0 && !t.isTransfer)
-    .reduce((s,t) => s+t.debit, 0);
-}
-
-// ─── Populate Filters ────────────────────────────────────
-function populateMonthFilter() {
-  const months = getMonths();
-  const sel    = document.getElementById('filterMonth');
-  if (sel) {
-    sel.innerHTML = '<option value="all">All Months</option>';
-    months.forEach(m => { const o=document.createElement('option'); o.value=m; o.textContent=monthLabel(m); sel.appendChild(o); });
-  }
-  const bsel = document.getElementById('budgetMonth');
-  if (bsel) {
-    bsel.innerHTML = '';
-    [...months].reverse().forEach((m,i) => {
-      const o=document.createElement('option'); o.value=m; o.textContent=monthLabel(m);
-      if (i===0) o.selected=true;
-      bsel.appendChild(o);
-    });
-  }
-}
-
-// ─── Render Dashboard ────────────────────────────────────
-function renderDashboard() {
-  const tx = getActiveTx();
-  const totalIncome   = tx.reduce((s,t) => s+t.credit, 0);
-  const totalExpenses = tx.reduce((s,t) => s+t.debit,  0);
-  const netFlow       = totalIncome - totalExpenses;
-  const savingsRate   = totalIncome>0 ? (netFlow/totalIncome*100) : 0;
-
-  document.getElementById('metricIncome').textContent   = fmt(totalIncome);
-  document.getElementById('metricExpenses').textContent = fmt(totalExpenses);
-  const netEl = document.getElementById('metricNet');
-  netEl.textContent = (netFlow>=0?'':'-') + fmt(netFlow);
-  netEl.className   = 'metric-value ' + (netFlow>=0 ? 'positive' : 'negative');
-  const savEl = document.getElementById('metricSavings');
-  savEl.textContent = savingsRate.toFixed(1) + '%';
-  savEl.className   = 'metric-value ' + (savingsRate>=0 ? 'positive' : 'negative');
-
-  renderCashflowChart(tx);
-  renderAccountChart(tx);
-  renderCategoryMonthlyChart(tx);
-  renderCategoryPie(tx);
-  renderCategoryList(tx);
+// ─── Render All ───────────────────────────────────────────
+function renderAll() {
+  renderNetWorth();
+  renderOverview();
   renderBudget();
+  renderTrends();
+  renderRecurring();
+  renderPortfolio();
   renderTable();
 }
 
-// ─── Budget ───────────────────────────────────────────────
-function renderBudget() {
-  const mk = document.getElementById('budgetMonth')?.value;
+// ─── Net Worth ────────────────────────────────────────────
+function renderNetWorth() {
+  const tx = getActive();
+  // checking: last balance from debit txs
+  const debitTx   = tx.filter(t => t.accountType==='debit' && t.balance>0);
+  const checkBal  = debitTx.length ? debitTx[0].balance : 0;
+  // credit: last balance
+  const creditTx  = tx.filter(t => t.accountType==='credit' && t.balance>0);
+  const creditBal = creditTx.length ? creditTx[0].balance : 0;
+  const hysa      = settings.hysaBalance || 0;
+  const roth      = rothPositions.reduce((s,p)=>s+p.currentValue, 0);
+  const total     = checkBal + hysa + roth - creditBal;
+  const stagnant  = checkBal + hysa;
+  const working   = roth;
+  const ratio     = total > 0 ? (working/total*100) : 0;
+
+  setText('nwChecking', fmt(checkBal));
+  setText('nwCredit',   fmt(creditBal));
+  setText('nwHysa',     fmt(hysa));
+  setText('nwRoth',     roth > 0 ? fmt(roth) : '—');
+  setText('nwTotal',    fmt(total));
+  setText('moneyStagnant', fmt(stagnant));
+  setText('moneyWorking',  fmt(working));
+  setText('moneyRatio',    ratio.toFixed(1) + '%');
+}
+
+// ─── Overview ─────────────────────────────────────────────
+function renderOverview() {
+  const mk     = document.getElementById('overviewMonth')?.value;
   if (!mk) return;
-  const tx     = getActiveTx();
-  const income = detectMonthlyIncome(tx, mk);
+  const tx     = getActive();
+  const income = getMonthlyIncome(tx, mk);
+  const spent  = tx.filter(t=>monthKey(t.date)===mk && t.debit>0).reduce((s,t)=>s+t.debit,0);
+  const rem    = income - spent;
+  const savPct = income > 0 ? (rem/income*100) : 0;
 
-  document.getElementById('budgetIncome').textContent     = fmt(income);
-  document.getElementById('budgetMonthLabel').textContent = monthLabel(mk);
-
-  let totalNeeds=0, totalWants=0;
-  Object.keys(BUDGET_RULES.needs.categories).forEach(cat => { totalNeeds += getActualSpend(tx,cat,mk); });
-  Object.keys(BUDGET_RULES.wants.categories).forEach(cat => { totalWants += getActualSpend(tx,cat,mk); });
-  const actualSavings = Math.max(0, income - totalNeeds - totalWants);
-
-  renderSummaryBar('needs',    totalNeeds,    income*0.50, income, BUDGET_RULES.needs.color);
-  renderSummaryBar('wants',    totalWants,    income*0.30, income, BUDGET_RULES.wants.color);
-  renderSummaryBar('savings',  actualSavings, income*0.20, income, BUDGET_RULES.savings.color);
-  renderBudgetSection('needs', tx, mk, income);
-  renderBudgetSection('wants', tx, mk, income);
-  renderCashFlow(tx, mk, income, totalNeeds, totalWants, actualSavings);
+  setText('ovIncome',      fmt(income));
+  setText('ovSpent',       fmt(spent));
+  const remEl = document.getElementById('ovRemaining');
+  if (remEl) { remEl.textContent = fmt(rem); remEl.className = 's-value ' + (rem>=0?'pos':'neg'); }
+  const savEl = document.getElementById('ovSavingsRate');
+  if (savEl) { savEl.textContent = savPct.toFixed(1)+'%'; savEl.className = 's-value ' + (savPct>=20?'pos':''); }
+  const remBar = document.getElementById('ovRemainingBar');
+  if (remBar) remBar.style.width = Math.min(Math.max((rem/income*100),0),100).toFixed(1)+'%';
+  const savBar = document.getElementById('ovSavingsBar');
+  if (savBar) savBar.style.width = Math.min(Math.max(savPct,0),100).toFixed(1)+'%';
 }
 
-function renderSummaryBar(section, actual, target, income, color) {
-  const pct    = income>0 ? (actual/income*100)  : 0;
-  const tgtPct = income>0 ? (target/income*100) : 0;
-  const over   = actual > target;
-  const el     = document.getElementById('summary_' + section);
-  if (!el) return;
-  el.innerHTML = `
-    <div class="summary-row">
-      <div class="summary-info">
-        <span class="summary-label">${BUDGET_RULES[section].label}</span>
-        <span class="summary-target">Target ${tgtPct.toFixed(0)}% &mdash; ${fmt(target)}</span>
-      </div>
-      <div class="summary-amounts">
-        <span class="summary-actual ${over?'over-budget':''}">${fmt(actual)}</span>
-        <span class="summary-pct ${over?'over-budget':''}">${pct.toFixed(1)}%</span>
-      </div>
-    </div>
-    <div class="progress-track">
-      <div class="progress-fill" style="width:${Math.min(pct,100).toFixed(1)}%; background:${over?'#B94040':color}"></div>
-      <div class="progress-target-line" style="left:${Math.min(tgtPct,100).toFixed(1)}%"></div>
-    </div>`;
-}
+// ─── Budget Matrix ────────────────────────────────────────
+function renderBudget() {
+  const mk     = document.getElementById('budgetMonth')?.value;
+  if (!mk) return;
+  const tx     = getActive();
+  const income = getMonthlyIncome(tx, mk);
+  const ratios = settings.budgetRatios || { housing:0.41, otherNeeds:0.15, wants:0.20, savings:0.24 };
 
-function renderBudgetSection(section, tx, mk, income) {
-  const container = document.getElementById('budget_' + section);
-  if (!container) return;
-  const cats  = BUDGET_RULES[section].categories;
-  const color = BUDGET_RULES[section].color;
-  container.innerHTML = Object.entries(cats).map(([cat, rule]) => {
-    const target = income * rule.pct;
-    const actual = getActualSpend(tx, cat, mk);
-    const pct    = target>0 ? Math.min((actual/target)*100, 100) : 0;
-    const over   = actual > target;
-    const near   = !over && pct >= 80;
-    const icon   = over ? '🔴' : near ? '🟡' : '🟢';
-    const cls    = over ? 'over-budget' : near ? 'near-budget' : '';
-    return `
-      <div class="budget-row">
-        <div class="budget-row-top">
-          <div class="budget-cat">
-            <span>${icon}</span>
-            <span class="budget-cat-name">${cat}${rule.fixed ? ' <span class="fixed-badge">fixed</span>' : ''}</span>
-          </div>
-          <div class="budget-amounts">
-            <span class="budget-actual ${cls}">${fmt(actual)}</span>
-            <span class="budget-slash">/</span>
-            <span class="budget-target">${fmt(target)}</span>
-            <span class="budget-pct ${cls}">${(income>0 ? actual/income*100 : 0).toFixed(1)}%</span>
-          </div>
-        </div>
-        <div class="progress-track">
-          <div class="progress-fill" style="width:${pct.toFixed(1)}%; background:${over?'#B94040':near?'#C47B2B':color}"></div>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-function renderCashFlow(tx, mk, income, needs, wants, savings) {
-  const el = document.getElementById('cashFlowBreakdown');
-  if (!el) return;
-  const remaining     = income - needs - wants;
-  const savingsPct    = income>0 ? (savings/income*100) : 0;
-  const targetSavings = income * 0.20;
-  const savingsGap    = targetSavings - savings;
-  el.innerHTML = `
-    <div class="cf-row cf-income"><span>Monthly Income</span><span class="cf-amount positive">${fmt(income)}</span></div>
-    <div class="cf-row"><span>Needs (50% target)</span><span class="cf-amount negative">- ${fmt(needs)}</span></div>
-    <div class="cf-row"><span>Wants (30% target)</span><span class="cf-amount negative">- ${fmt(wants)}</span></div>
-    <div class="cf-divider"></div>
-    <div class="cf-row cf-result">
-      <span>Remaining for Savings</span>
-      <span class="cf-amount ${remaining>=0?'positive':'negative'}">${remaining>=0?'':'-'}${fmt(remaining)}</span>
-    </div>
-    <div class="cf-row"><span>Your Savings Rate</span><span class="cf-amount ${savingsPct>=20?'positive':'near-budget'}">${savingsPct.toFixed(1)}%</span></div>
-    <div class="cf-row"><span>20% Savings Target</span><span class="cf-amount">${fmt(targetSavings)}</span></div>
-    <div class="cf-row cf-alert">
-      ${savingsGap>0
-        ? `<span>⚠️ Gap to savings goal</span><span class="cf-amount over-budget">- ${fmt(savingsGap)}</span>`
-        : `<span>✅ Savings goal met!</span><span class="cf-amount positive">+ ${fmt(Math.abs(savingsGap))}</span>`
-      }
-    </div>`;
-}
-
-// ─── Charts ───────────────────────────────────────────────
-const FONT   = { family:'DM Sans', size:11 };
-const GRID   = '#F0EDE8';
-const TICK   = '#7A7A72';
-const COLORS = ['#2D5A3D','#4A7C59','#C47B2B','#B94040','#5B7FA6','#8B6BAE','#4AACAA','#A08060','#7A9E4A','#C45A7B'];
-
-function destroyChart(id) { if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
-
-function renderCashflowChart(tx) {
-  destroyChart('cashflow');
-  const months   = getMonths();
-  const income   = months.map(m => tx.filter(t=>monthKey(t.date)===m).reduce((s,t)=>s+t.credit,0));
-  const expenses = months.map(m => tx.filter(t=>monthKey(t.date)===m).reduce((s,t)=>s+t.debit, 0));
-  charts['cashflow'] = new Chart(document.getElementById('cashflowChart'), {
-    type:'bar',
-    data:{ labels:months.map(monthLabel), datasets:[
-      { label:'Income',   data:income,   backgroundColor:'#4A7C5920', borderColor:'#4A7C59', borderWidth:2 },
-      { label:'Expenses', data:expenses, backgroundColor:'#B9404020', borderColor:'#B94040', borderWidth:2 }
-    ]},
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ labels:{ font:FONT, color:TICK } } },
-      scales:{ x:{ ticks:{ font:FONT, color:TICK }, grid:{ color:GRID } }, y:{ ticks:{ font:FONT, color:TICK }, grid:{ color:GRID } } }
-    }
-  });
-}
-
-function renderAccountChart(tx) {
-  destroyChart('account');
-  const ds = tx.filter(t=>t.accountType==='debit' &&t.debit>0).reduce((s,t)=>s+t.debit,0);
-  const cs = tx.filter(t=>t.accountType==='credit'&&t.debit>0).reduce((s,t)=>s+t.debit,0);
-  charts['account'] = new Chart(document.getElementById('accountChart'), {
-    type:'doughnut',
-    data:{ labels:['Debit / Checking','Credit Card'],
-      datasets:[{ data:[ds,cs], backgroundColor:['#4A7C5940','#C47B2B40'], borderColor:['#4A7C59','#C47B2B'], borderWidth:2 }]
+  // Build groups
+  const groups = [
+    {
+      key: 'housing', label: 'housing', budget: income * ratios.housing,
+      rows: [{ name: 'Rent / Housing', cat: 'Housing', actual: settings.rentAmount || 0, budget: income * ratios.housing }]
     },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'bottom', labels:{ font:FONT, color:TICK } } }
-    }
-  });
-}
-
-function renderCategoryMonthlyChart(tx) {
-  destroyChart('catMonthly');
-  const months = getMonths();
-  const cats   = [...new Set(tx.filter(t=>t.debit>0).map(t=>t.category))];
-  charts['catMonthly'] = new Chart(document.getElementById('categoryMonthlyChart'), {
-    type:'bar',
-    data:{ labels:months.map(monthLabel),
-      datasets:cats.map((cat,i) => ({
-        label:cat,
-        data:months.map(m => tx.filter(t=>monthKey(t.date)===m&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0)),
-        backgroundColor:COLORS[i%COLORS.length]+'80', borderColor:COLORS[i%COLORS.length], borderWidth:1
+    {
+      key: 'needs', label: 'needs', budget: income * ratios.otherNeeds,
+      rows: (settings.needsCategories || ['Groceries','Transportation','Utilities']).map(cat => ({
+        name: cat.toLowerCase(), cat, actual: getCategorySpend(tx, cat, mk), budget: income * ratios.otherNeeds / 3
       }))
     },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ labels:{ font:FONT, color:TICK } } },
-      scales:{
-        x:{ stacked:true, ticks:{ font:FONT, color:TICK }, grid:{ color:GRID } },
-        y:{ stacked:true, ticks:{ font:FONT, color:TICK }, grid:{ color:GRID } }
-      }
-    }
-  });
-}
-
-function renderCategoryPie(tx) {
-  destroyChart('catPie');
-  const cats = {};
-  tx.filter(t=>t.debit>0).forEach(t => { cats[t.category]=(cats[t.category]||0)+t.debit; });
-  const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]);
-  charts['catPie'] = new Chart(document.getElementById('categoryPieChart'), {
-    type:'pie',
-    data:{ labels:sorted.map(s=>s[0]),
-      datasets:[{ data:sorted.map(s=>s[1]),
-        backgroundColor:sorted.map((_,i)=>COLORS[i%COLORS.length]+'99'),
-        borderColor:sorted.map((_,i)=>COLORS[i%COLORS.length]), borderWidth:1.5
-      }]
+    {
+      key: 'wants', label: 'wants', budget: income * ratios.wants,
+      rows: (settings.wantsCategories || ['Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services']).map(cat => ({
+        name: cat.toLowerCase(), cat, actual: getCategorySpend(tx, cat, mk), budget: income * ratios.wants / 6
+      }))
     },
-    options:{ responsive:true, maintainAspectRatio:false,
-      plugins:{ legend:{ position:'right', labels:{ font:FONT, color:TICK, boxWidth:14 } } }
-    }
+  ];
+
+  let totalBudget = income;
+  let totalSpent  = groups.reduce((s,g) => s + g.rows.reduce((ss,r)=>ss+r.actual,0), 0);
+  let leftover    = income - totalSpent;
+
+  setText('budgetTotal',   fmt(income));
+  setText('budgetSpent',   fmt(totalSpent));
+  setText('budgetLeftover', fmt(leftover));
+
+  const el = document.getElementById('budgetMatrix');
+  el.innerHTML = `
+    <div class="matrix-header">
+      <span>category</span>
+      <span>spent</span>
+      <span>budget</span>
+      <span>diff</span>
+      <span>progress</span>
+    </div>`;
+
+  groups.forEach(group => {
+    const groupActual = group.rows.reduce((s,r)=>s+r.actual,0);
+    const groupDiff   = group.budget - groupActual;
+    const over        = groupActual > group.budget;
+    const pct         = group.budget > 0 ? Math.min(groupActual/group.budget*100,100) : 0;
+    const diffClass   = over ? 'neg' : 'pos';
+
+    const subId = 'sub_' + group.key;
+    el.innerHTML += `
+      <div class="matrix-row group-header" onclick="toggleGroup('${subId}')">
+        <div class="row-name"><span class="caret" id="caret_${subId}">▶</span> ${group.label}</div>
+        <div class="row-val">${fmt(groupActual)}</div>
+        <div class="row-val" style="color:var(--muted)">${fmt(group.budget)}</div>
+        <div class="row-val row-diff ${diffClass}">${over?'-':'+'}${fmt(Math.abs(groupDiff))}</div>
+        <div class="row-bar-cell">
+          <div class="mini-bar"><div class="mini-bar-fill" style="width:${pct.toFixed(1)}%;background:${over?'var(--negative)':'var(--ink)'}"></div></div>
+        </div>
+      </div>
+      <div class="sub-rows collapsed" id="${subId}">
+        ${group.rows.map(row => {
+          const rowPct  = row.budget>0 ? Math.min(row.actual/row.budget*100,100) : 0;
+          const rowOver = row.actual > row.budget;
+          const rowDiff = row.budget - row.actual;
+          return `
+          <div class="matrix-row sub-row">
+            <div class="row-name">${row.name}</div>
+            <div class="row-val">${fmt(row.actual)}</div>
+            <div class="row-val" style="color:var(--muted)">${fmt(row.budget)}</div>
+            <div class="row-val row-diff ${rowOver?'neg':'pos'}">${rowOver?'-':'+'}${fmt(Math.abs(rowDiff))}</div>
+            <div class="row-bar-cell">
+              <div class="mini-bar"><div class="mini-bar-fill" style="width:${rowPct.toFixed(1)}%;background:${rowOver?'var(--negative)':'var(--positive)'}"></div></div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>`;
+  });
+
+  // Savings row
+  const savBudget = income * (ratios.savings || 0.24);
+  const savActual = Math.max(0, income - totalSpent);
+  const savOver   = savActual < savBudget;
+  const savDiff   = savActual - savBudget;
+  el.innerHTML += `
+    <div class="matrix-row group-header" style="border-top: 1px solid var(--border);">
+      <div class="row-name" style="padding-left:0">savings</div>
+      <div class="row-val ${savOver?'neg':'pos'}">${fmt(savActual)}</div>
+      <div class="row-val" style="color:var(--muted)">${fmt(savBudget)}</div>
+      <div class="row-val row-diff ${savOver?'neg':'pos'}">${savDiff>=0?'+':'-'}${fmt(Math.abs(savDiff))}</div>
+      <div class="row-bar-cell">
+        <div class="mini-bar"><div class="mini-bar-fill" style="width:${Math.min(savActual/savBudget*100,100).toFixed(1)}%;background:${savOver?'var(--negative)':'var(--positive)'}"></div></div>
+      </div>
+    </div>`;
+}
+
+function toggleGroup(id) {
+  const el    = document.getElementById(id);
+  const caret = document.getElementById('caret_' + id);
+  if (!el) return;
+  el.classList.toggle('collapsed');
+  if (caret) caret.classList.toggle('open');
+}
+
+// ─── Trends ───────────────────────────────────────────────
+function renderTrends() {
+  const months  = getMonths();
+  const last3   = months.slice(-3);
+  if (last3.length < 1) return;
+  const tx      = getActive();
+  const allCats = [...new Set(tx.filter(t=>t.debit>0).map(t=>t.category))].sort();
+
+  const el = document.getElementById('trendMatrix');
+  const m0 = last3[last3.length-1];
+  const m1 = last3[last3.length-2];
+  const m2 = last3[last3.length-3];
+
+  el.innerHTML = `
+    <div class="trend-header">
+      <span>category</span>
+      <span>${m2 ? monthLabel(m2) : '—'}</span>
+      <span>${m1 ? monthLabel(m1) : '—'}</span>
+      <span>${monthLabel(m0)}</span>
+      <span>vs prev</span>
+      <span>vs 2mo</span>
+    </div>`;
+
+  allCats.forEach(cat => {
+    const v0 = tx.filter(t=>monthKey(t.date)===m0&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0);
+    const v1 = m1 ? tx.filter(t=>monthKey(t.date)===m1&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0) : 0;
+    const v2 = m2 ? tx.filter(t=>monthKey(t.date)===m2&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0) : 0;
+    if (v0===0 && v1===0 && v2===0) return;
+    const d1 = m1 ? v0-v1 : null;
+    const d2 = m2 ? v0-v2 : null;
+    const cls1 = d1===null ? '' : d1>0?'up':'down';
+    const cls2 = d2===null ? '' : d2>0?'up':'down';
+    el.innerHTML += `
+      <div class="trend-row">
+        <div style="font-size:0.78rem">${cat.toLowerCase()}</div>
+        <div class="trend-val">${v2>0?fmt(v2):'—'}</div>
+        <div class="trend-val">${v1>0?fmt(v1):'—'}</div>
+        <div class="trend-val">${v0>0?fmt(v0):'—'}</div>
+        <div class="trend-diff ${cls1}">${d1===null?'—':(d1>0?'+':'')+fmt(d1)}</div>
+        <div class="trend-diff ${cls2}">${d2===null?'—':(d2>0?'+':'')+fmt(d2)}</div>
+      </div>`;
   });
 }
 
-function renderCategoryList(tx) {
-  const cats = {};
-  tx.filter(t=>t.debit>0).forEach(t => { cats[t.category]=(cats[t.category]||0)+t.debit; });
-  const sorted = Object.entries(cats).sort((a,b)=>b[1]-a[1]);
-  const maxVal = sorted[0] ? sorted[0][1] : 1;
-  document.getElementById('categoryList').innerHTML = sorted.map(([cat,amt]) => `
-    <div class="category-row">
-      <div class="category-name">${cat}</div>
-      <div class="category-bar-wrap"><div class="category-bar" style="width:${(amt/maxVal*100).toFixed(1)}%"></div></div>
-      <div class="category-amount">${fmt(amt)}</div>
-    </div>`).join('');
+// ─── Recurring Detection ──────────────────────────────────
+function renderRecurring() {
+  const tx     = getActive().filter(t => t.debit>0);
+  const months = getMonths();
+  if (months.length < 2) return;
+
+  // Group by description — find items appearing in 2+ months with similar amounts
+  const byDesc = {};
+  tx.forEach(t => {
+    const key = t.description.toLowerCase().trim();
+    if (!byDesc[key]) byDesc[key] = [];
+    byDesc[key].push(t);
+  });
+
+  const recurring = [];
+  Object.entries(byDesc).forEach(([desc, txs]) => {
+    const monthsPresent = [...new Set(txs.map(t=>monthKey(t.date)))];
+    if (monthsPresent.length < 2) return;
+    const avg    = txs.reduce((s,t)=>s+t.debit,0) / txs.length;
+    const latest = txs.sort((a,b)=>b.date-a.date)[0];
+    // check consistency — stdev < 10% of avg
+    const stdev = Math.sqrt(txs.reduce((s,t)=>s+Math.pow(t.debit-avg,2),0)/txs.length);
+    if (stdev/avg > 0.25 && avg > 5) return; // too variable unless small amount
+    recurring.push({
+      description: latest.description,
+      category:    latest.category,
+      avgAmount:   avg,
+      monthsFound: monthsPresent.length,
+      lastDate:    latest.date,
+      frequency:   monthsPresent.length >= 3 ? 'monthly' : '2+ months',
+    });
+  });
+  recurring.sort((a,b) => b.avgAmount - a.avgAmount);
+
+  const el = document.getElementById('recurringList');
+  if (!recurring.length) {
+    el.innerHTML = '<div style="padding:32px 16px; text-align:center; color:var(--muted); font-size:0.78rem">no recurring expenses detected yet — need 2+ months of data</div>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="recurring-header">
+      <span>description</span>
+      <span>category</span>
+      <span style="text-align:right">avg amount</span>
+      <span style="text-align:right">frequency</span>
+    </div>` +
+    recurring.map(r => `
+      <div class="recurring-row">
+        <div class="rec-name">${r.description.toLowerCase()}</div>
+        <div style="color:var(--muted); font-size:0.72rem">${r.category.toLowerCase()}</div>
+        <div class="rec-val">${fmt(r.avgAmount)}</div>
+        <div class="rec-val"><span class="rec-badge">${r.frequency}</span></div>
+      </div>`).join('');
 }
 
-// ─── Transactions Table ───────────────────────────────────
+// ─── Portfolio ────────────────────────────────────────────
+function renderPortfolio() {
+  // Roth positions
+  const el = document.getElementById('positionsList');
+  if (!rothPositions.length) {
+    el.innerHTML = '<div style="padding:32px 16px; text-align:center; color:var(--muted); font-size:0.78rem">upload Roth012026.csv to see positions</div>';
+    setText('rothTotal', '—'); setText('rothGain', '—'); setText('rothToday', '—');
+  } else {
+    const total     = rothPositions.reduce((s,p)=>s+p.currentValue,0);
+    const totalGain = rothPositions.reduce((s,p)=>s+p.totalGL,0);
+    const todayGL   = rothPositions.reduce((s,p)=>s+p.todayGL,0);
+    setText('rothTotal', fmt(total));
+    const gainEl = document.getElementById('rothGain');
+    if (gainEl) { gainEl.textContent = (totalGain>=0?'+':'')+fmt(totalGain); gainEl.className = 'nw-value ' + (totalGain>=0?'pos':'neg'); }
+    const todayEl = document.getElementById('rothToday');
+    if (todayEl) { todayEl.textContent = (todayGL>=0?'+':'')+fmt(todayGL); todayEl.className = 'nw-value ' + (todayGL>=0?'pos':'neg'); }
+
+    el.innerHTML = `
+      <div class="positions-header">
+        <span>symbol</span>
+        <span>description</span>
+        <span>value</span>
+        <span>cost basis</span>
+        <span>total gain</span>
+        <span>% of acct</span>
+      </div>` +
+      rothPositions.map(p => `
+        <div class="position-row">
+          <div class="pos-symbol">${p.symbol}</div>
+          <div style="font-size:0.75rem; color:var(--muted)">${p.description.toLowerCase()}</div>
+          <div class="pos-val">${p.currentValue>0?fmt(p.currentValue):'—'}</div>
+          <div class="pos-val" style="color:var(--muted)">${p.costBasis>0?fmt(p.costBasis):'—'}</div>
+          <div class="pos-gain ${p.totalGL>=0?'pos':'neg'}">${p.totalGL!==0?(p.totalGL>0?'+':'')+fmt(p.totalGL):'—'}</div>
+          <div class="pos-val" style="color:var(--muted)">${p.pctAccount>0?p.pctAccount.toFixed(1)+'%':'—'}</div>
+        </div>`).join('');
+  }
+
+  // HYSA
+  const hysa    = settings.hysaBalance || 0;
+  const interest = hysaTx.filter(t=>t.type.toLowerCase().includes('interest')).reduce((s,t)=>s+t.amount,0);
+  const lastTx   = hysaTx.sort((a,b)=>b.date-a.date)[0];
+  setText('hysaBalance',  fmt(hysa));
+  setText('hysaInterest', interest>0 ? fmt(interest) : '—');
+  setText('hysaLast',     lastTx ? fmt(lastTx.amount) : '—');
+  setText('hysaLastDate', lastTx ? lastTx.date.toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}).toLowerCase() : '');
+}
+
+// ─── Transactions ─────────────────────────────────────────
 function renderTable() {
   const mf = document.getElementById('filterMonth')?.value   || 'all';
   const af = document.getElementById('filterAccount')?.value || 'all';
@@ -537,30 +574,37 @@ function renderTable() {
     if (tf==='income'  && !(t.credit>0 && !t.isTransfer)) return false;
     return true;
   });
-  const tbody = document.getElementById('tableBody');
+
+  const body = document.getElementById('tableBody');
   if (!filtered.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--ink-muted)">No transactions match your filters.</td></tr>`;
+    body.innerHTML = '<div class="tx-empty">no transactions match your filters</div>';
     return;
   }
-  tbody.innerHTML = filtered.map(t => {
-    const d = t.date.toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
+  body.innerHTML = filtered.map(t => {
+    const d = t.date.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'});
     const badge = t.isTransfer
-      ? `<span class="badge badge-transfer">Transfer</span>`
+      ? `<span class="tx-badge transfer-badge">transfer</span>`
       : t.accountType==='debit'
-        ? `<span class="badge badge-debit">Debit</span>`
-        : `<span class="badge badge-credit">Credit</span>`;
-    return `<tr>
-      <td>${d}</td><td>${t.description}</td><td>${t.category}</td><td>${badge}</td>
-      ${t.debit>0  ? `<td class="amount-debit">-${fmt(t.debit)}</td>`   : '<td></td>'}
-      ${t.credit>0 ? `<td class="amount-credit">+${fmt(t.credit)}</td>` : '<td></td>'}
-    </tr>`;
+        ? `<span class="tx-badge debit-badge">checking</span>`
+        : `<span class="tx-badge credit-badge">credit</span>`;
+    return `<div class="tx-row">
+      <div class="tx-date">${d}</div>
+      <div class="tx-desc">${t.description.toLowerCase()}</div>
+      <div class="tx-cat">${t.category.toLowerCase()}</div>
+      <div>${badge}</div>
+      ${t.debit>0  ? `<div class="tx-debit">-${fmt(t.debit)}</div>`   : '<div></div>'}
+      ${t.credit>0 ? `<div class="tx-credit">+${fmt(t.credit)}</div>` : '<div></div>'}
+    </div>`;
   }).join('');
 }
 
-// ─── Tab Switching ────────────────────────────────────────
+// ─── Tab Switch ───────────────────────────────────────────
 function switchTab(name) {
-  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
-  document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`).classList.add('active');
-  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+  document.querySelector(`.nav-btn[onclick="switchTab('${name}')"]`).classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
 }
+
+// ─── Utils ────────────────────────────────────────────────
+function setText(id, val) { const el=document.getElementById(id); if(el) el.textContent=val; }
