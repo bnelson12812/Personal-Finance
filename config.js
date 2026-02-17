@@ -36,7 +36,7 @@ window.FINANCE_CONFIG = {
   users: {
     "bnelson": {
       displayName: "bnelson",
-      passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be",
+      passwordHash: "6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118090",
       dataFolder: "data/bnelson",
       settings: {
         rentAmount:       2480,
