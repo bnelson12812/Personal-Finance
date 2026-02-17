@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>finance.dashboard</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:      #F4F3F0;
+      --surface: #FFFFFF;
+      --ink:     #1A1A1A;
+      --muted:   #888880;
+      --border:  #DDDBD6;
+      --grid:    #ECEAE5;
+      --pos:     #2A6B3C;
+      --neg:     #8B2020;
+      --warn:    #7A5C1E;
+    }
+    body { font-family: 'IBM Plex Mono', monospace; background: var(--bg); color: var(--ink); min-height: 100vh; font-size: 13px; }
+
+    /* header */
+    header { background: var(--bg); border-bottom: 1px solid var(--border); padding: 0 32px; height: 48px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 200; }
+    .logo { font-size: 0.85rem; }
+    .logo span { color: var(--muted); }
+    .hdr-right { display: flex; align-items: center; gap: 24px; font-size: 0.72rem; color: var(--muted); }
+    .logout-btn { background: none; border: 1px solid var(--border); padding: 4px 12px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--muted); cursor: pointer; transition: all 0.15s; }
+    .logout-btn:hover { border-color: var(--ink); color: var(--ink); }
+
+    /* layout */
+    .wrap { max-width: 1280px; margin: 0 auto; padding: 24px 32px; }
+
+    /* nav */
+    .nav { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    .nav-btn { padding: 8px 18px; border: none; background: none; font-family: 'IBM Plex Mono', monospace; font-size: 0.75rem; color: var(--muted); cursor: pointer; border-bottom: 1px solid transparent; margin-bottom: -1px; transition: all 0.15s; }
+    .nav-btn:hover { color: var(--ink); }
+    .nav-btn.active { color: var(--ink); border-bottom-color: var(--ink); }
+    .tab { display: none; }
+    .tab.active { display: block; }
+
+    /* status */
+    .status { padding: 80px 0; text-align: center; color: var(--muted); font-size: 0.78rem; }
+    .spinner { width: 18px; height: 18px; border: 1px solid var(--border); border-top-color: var(--ink); border-radius: 50%; animation: spin 0.7s linear infinite; margin: 0 auto 14px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .retry-btn { margin-top: 14px; background: none; border: 1px solid var(--border); padding: 5px 14px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink); cursor: pointer; }
+    .retry-btn:hover { border-color: var(--ink); }
+
+    /* section label */
+    .slabel { font-size: 0.65rem; letter-spacing: 0.12em; color: var(--muted); margin-bottom: 10px; }
+
+    /* banner */
+    .banner { border: 1px solid var(--border); background: var(--surface); padding: 9px 14px; margin-bottom: 18px; display: flex; align-items: center; justify-content: space-between; font-size: 0.7rem; color: var(--muted); }
+    .refresh { color: var(--ink); cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+
+    /* card grids */
+    .card-grid { display: grid; gap: 1px; background: var(--border); border: 1px solid var(--border); margin-bottom: 20px; }
+    .card-grid.cols5 { grid-template-columns: repeat(5,1fr); }
+    .card-grid.cols4 { grid-template-columns: repeat(4,1fr); }
+    .card-grid.cols3 { grid-template-columns: repeat(3,1fr); }
+    .card { background: var(--surface); padding: 18px 20px 14px; }
+    .card.dark { background: var(--ink); }
+    .card-label { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 8px; }
+    .card.dark .card-label { color: rgba(255,255,255,0.45); }
+    .card-value { font-size: 1.2rem; font-weight: 300; }
+    .card.dark .card-value { color: #fff; }
+    .card-sub { font-size: 0.65rem; color: var(--muted); margin-top: 5px; }
+    .card.dark .card-sub { color: rgba(255,255,255,0.35); }
+    .bar2 { height: 2px; background: var(--grid); margin-top: 10px; }
+    .bar2-fill { height: 100%; background: var(--ink); transition: width 0.5s; }
+
+    /* ── BUDGET MATRIX ── */
+    .matrix { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .mx-head { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .mx-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); text-align: right; }
+    .mx-head span:first-child { text-align: left; }
+
+    /* group row — level 1 */
+    .mx-group { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 9px 14px; background: var(--bg); border-bottom: 1px solid var(--border); cursor: pointer; align-items: center; }
+    .mx-group:hover { background: #ECEAE5; }
+    .mx-group-name { font-size: 0.72rem; letter-spacing: 0.06em; display: flex; align-items: center; gap: 6px; }
+    .mx-val { text-align: right; font-weight: 300; }
+    .mx-diff { text-align: right; font-size: 0.72rem; }
+    .mx-diff.pos { color: var(--pos); }
+    .mx-diff.neg { color: var(--neg); }
+    .minibar { width: 48px; height: 3px; background: var(--grid); margin-left: auto; }
+    .minibar-fill { height: 100%; transition: width 0.4s; }
+
+    /* category row — level 2 */
+    .mx-cat { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 8px 14px 8px 28px; border-bottom: 1px solid var(--grid); cursor: pointer; align-items: center; background: var(--surface); }
+    .mx-cat:hover { background: var(--bg); }
+    .mx-cat-name { display: flex; align-items: center; gap: 6px; color: var(--ink); }
+
+    /* merchant row — level 3 */
+    .mx-merchant { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 7px 14px 7px 46px; border-bottom: 1px solid var(--grid); cursor: pointer; align-items: center; background: var(--surface); }
+    .mx-merchant:hover { background: var(--bg); }
+    .mx-merchant-name { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.75rem; }
+
+    /* transaction row — level 4 */
+    .mx-tx { display: grid; grid-template-columns: 1fr 90px 90px 90px 60px; padding: 6px 14px 6px 64px; border-bottom: 1px solid var(--grid); background: var(--surface); align-items: center; }
+    .mx-tx:last-child { border-bottom: none; }
+    .mx-tx-name { color: var(--muted); font-size: 0.72rem; display: flex; align-items: center; gap: 8px; }
+    .mx-tx-date { font-size: 0.65rem; color: var(--muted); opacity: 0.6; }
+    .reclassify-select { font-family: 'IBM Plex Mono', monospace; font-size: 0.68rem; border: 1px solid var(--border); background: var(--bg); color: var(--muted); padding: 2px 4px; outline: none; cursor: pointer; display: none; }
+    .mx-tx:hover .reclassify-select { display: inline-block; }
+    .caret { font-size: 0.55rem; transition: transform 0.18s; display: inline-block; color: var(--muted); }
+    .caret.open { transform: rotate(90deg); }
+    .hidden { display: none !important; }
+
+    /* trend matrix */
+    .trend { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .tr-head { display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1fr; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .tr-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); text-align: right; }
+    .tr-head span:first-child { text-align: left; }
+    .tr-row { display: grid; grid-template-columns: 1.8fr 1fr 1fr 1fr 1fr 1fr; padding: 8px 14px; border-bottom: 1px solid var(--grid); align-items: center; }
+    .tr-row:last-child { border-bottom: none; }
+    .tr-row:hover { background: var(--bg); }
+    .tr-val { text-align: right; font-weight: 300; }
+    .tr-diff { text-align: right; font-size: 0.72rem; }
+    .tr-diff.up { color: var(--neg); }
+    .tr-diff.dn { color: var(--pos); }
+
+    /* recurring */
+    .recur { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .recur-head { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 40px; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .recur-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); }
+    .recur-head span:not(:first-child) { text-align: right; }
+    .recur-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 40px; padding: 9px 14px; border-bottom: 1px solid var(--grid); align-items: center; }
+    .recur-row:last-child { border-bottom: none; }
+    .recur-row:hover { background: var(--bg); }
+    .recur-val { text-align: right; }
+    .drill-btn { text-align: center; color: var(--muted); cursor: pointer; font-size: 0.85rem; }
+    .drill-btn:hover { color: var(--ink); }
+    .badge { font-size: 0.62rem; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); }
+
+    /* portfolio */
+    .pos-table { border: 1px solid var(--border); background: var(--surface); margin-bottom: 20px; font-size: 0.78rem; }
+    .pos-head { display: grid; grid-template-columns: 70px 2fr 1fr 1fr 1fr 1fr; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .pos-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); text-align: right; }
+    .pos-head span:first-child, .pos-head span:nth-child(2) { text-align: left; }
+    .pos-row { display: grid; grid-template-columns: 70px 2fr 1fr 1fr 1fr 1fr; padding: 9px 14px; border-bottom: 1px solid var(--grid); align-items: center; }
+    .pos-row:last-child { border-bottom: none; }
+    .pos-row:hover { background: var(--bg); }
+    .pos-sym { font-weight: 500; font-size: 0.8rem; }
+    .pos-val { text-align: right; font-weight: 300; }
+    .pos-gain { text-align: right; font-size: 0.72rem; }
+
+    /* transactions */
+    .tx-wrap { border: 1px solid var(--border); background: var(--surface); }
+    .tx-filters { padding: 10px 14px; border-bottom: 1px solid var(--border); display: flex; gap: 10px; background: var(--bg); flex-wrap: wrap; }
+    .tx-filters select { font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; border: 1px solid var(--border); background: var(--surface); color: var(--ink); padding: 4px 8px; outline: none; cursor: pointer; }
+    .tx-head { display: grid; grid-template-columns: 90px 2.5fr 1fr 80px 90px 90px; padding: 7px 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+    .tx-head span { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); }
+    .tx-head span:nth-child(5), .tx-head span:nth-child(6) { text-align: right; }
+    .tx-row { display: grid; grid-template-columns: 90px 2.5fr 1fr 80px 90px 90px; padding: 8px 14px; border-bottom: 1px solid var(--grid); font-size: 0.75rem; align-items: center; }
+    .tx-row:last-child { border-bottom: none; }
+    .tx-row:hover { background: var(--bg); }
+    .tx-date { color: var(--muted); font-size: 0.68rem; }
+    .tx-desc { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 12px; }
+    .tx-cat { color: var(--muted); font-size: 0.68rem; }
+    .tx-badge { font-size: 0.62rem; padding: 2px 6px; border: 1px solid var(--border); color: var(--muted); }
+    .tx-badge.db { border-color: #C5DEC9; color: var(--pos); }
+    .tx-badge.cr { border-color: #F0D9B5; color: var(--warn); }
+    .tx-dr { text-align: right; color: var(--neg); }
+    .tx-cr { text-align: right; color: var(--pos); }
+    .tx-empty { padding: 36px 14px; text-align: center; color: var(--muted); font-size: 0.75rem; }
+
+    /* settings */
+    .settings-block { border: 1px solid var(--border); background: var(--surface); padding: 22px; margin-bottom: 14px; }
+    .settings-block h3 { font-size: 0.65rem; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 18px; font-weight: 400; }
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 18px; }
+    .field label { display: block; font-size: 0.65rem; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 5px; }
+    .field input { width: 100%; padding: 7px 9px; border: 1px solid var(--border); font-family: 'IBM Plex Mono', monospace; font-size: 0.8rem; color: var(--ink); background: var(--bg); outline: none; transition: border-color 0.15s; }
+    .field input:focus { border-color: var(--ink); background: #fff; }
+    .field .hint { font-size: 0.65rem; color: var(--muted); margin-top: 3px; }
+    .save-btn { border: 1px solid var(--ink); background: none; padding: 6px 18px; font-family: 'IBM Plex Mono', monospace; font-size: 0.72rem; color: var(--ink); cursor: pointer; transition: all 0.15s; }
+    .save-btn:hover { background: var(--ink); color: #fff; }
+
+    /* toast */
+    .toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--ink); color: #fff; padding: 7px 14px; font-size: 0.72rem; opacity: 0; transition: all 0.2s; pointer-events: none; z-index: 999; }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* utils */
+    .pos { color: var(--pos); }
+    .neg { color: var(--neg); }
+    #dashboard { display: none; }
+    .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width:900px) { .card-grid.cols5,.card-grid.cols4 { grid-template-columns:1fr 1fr; } .two-col { grid-template-columns:1fr; } }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">finance<span>.dashboard</span></div>
+  <div class="hdr-right">
+    <span id="userTag"></span>
+    <span id="lastUpdated"></span>
+    <button class="logout-btn" onclick="logout()">sign out</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="status" id="loadingScreen"><div class="spinner"></div><div>loading data…</div></div>
+
+  <div class="status" id="errorScreen" style="display:none">
+    <div style="font-size:1rem;margin-bottom:10px">—</div>
+    <div>no data found</div>
+    <div style="margin-top:6px;font-size:0.68rem">expected: <span id="expectedPath"></span></div>
+    <button class="retry-btn" onclick="loadData()">retry</button>
+  </div>
+
+  <div id="dashboard">
+
+    <div class="banner">
+      <span><span id="filesLoaded"></span> files loaded &nbsp;·&nbsp; <span id="dataPathHint"></span></span>
+      <span class="refresh" onclick="loadData()">↺ refresh</span>
+    </div>
+
+    <div class="nav">
+      <button class="nav-btn active" onclick="switchTab('overview')">overview</button>
+      <button class="nav-btn" onclick="switchTab('budget')">budget</button>
+      <button class="nav-btn" onclick="switchTab('trends')">trends</button>
+      <button class="nav-btn" onclick="switchTab('recurring')">recurring</button>
+      <button class="nav-btn" onclick="switchTab('portfolio')">portfolio</button>
+      <button class="nav-btn" onclick="switchTab('transactions')">transactions</button>
+      <button class="nav-btn" onclick="switchTab('settings')">settings</button>
+      <button class="nav-btn" onclick="switchTab('about')">about</button>
+    </div>
+
+    <!-- overview -->
+    <div class="tab active" id="tab-overview">
+      <div class="slabel">net worth</div>
+      <div class="card-grid cols5">
+        <div class="card"><div class="card-label">checking</div><div class="card-value" id="nwChecking">—</div><div class="card-sub">current balance</div></div>
+        <div class="card"><div class="card-label">credit card</div><div class="card-value" id="nwCredit">—</div><div class="card-sub">outstanding balance</div></div>
+        <div class="card"><div class="card-label">high yield savings</div><div class="card-value pos" id="nwHysa">—</div><div class="card-sub">earning yield</div></div>
+        <div class="card"><div class="card-label">roth ira</div><div class="card-value pos" id="nwRoth">—</div><div class="card-sub">current positions</div></div>
+        <div class="card dark"><div class="card-label">total net worth</div><div class="card-value" id="nwTotal">—</div><div class="card-sub">all accounts</div></div>
+      </div>
+
+      <div class="slabel" style="margin-top:4px">
+        this month &nbsp;·&nbsp;
+        <select id="overviewMonth" onchange="renderOverview()" style="font-family:'IBM Plex Mono',monospace;font-size:0.65rem;border:none;background:transparent;color:var(--muted);outline:none;cursor:pointer;"></select>
+      </div>
+      <div class="card-grid cols4">
+        <div class="card"><div class="card-label">income</div><div class="card-value pos" id="ovIncome">—</div><div class="card-sub">deposits this month</div></div>
+        <div class="card"><div class="card-label">spent</div><div class="card-value" id="ovSpent">—</div><div class="card-sub">excl. transfers</div></div>
+        <div class="card"><div class="card-label">remaining</div><div class="card-value" id="ovRemaining">—</div><div class="card-sub">income minus spent</div><div class="bar2"><div class="bar2-fill" id="ovRemBar" style="width:0%"></div></div></div>
+        <div class="card"><div class="card-label">savings rate</div><div class="card-value" id="ovSavRate">—</div><div class="card-sub">target 24%</div><div class="bar2"><div class="bar2-fill" id="ovSavBar" style="width:0%"></div></div></div>
+      </div>
+
+      <div class="slabel">money at work</div>
+      <div class="card-grid cols3">
+        <div class="card"><div class="card-label">stagnant</div><div class="card-value" id="mStagnant">—</div><div class="card-sub">checking only</div></div>
+        <div class="card"><div class="card-label">working</div><div class="card-value pos" id="mWorking">—</div><div class="card-sub">hysa + roth ira</div></div>
+        <div class="card"><div class="card-label">working ratio</div><div class="card-value" id="mRatio">—</div><div class="card-sub">% of net worth invested</div></div>
+      </div>
+    </div>
+
+    <!-- budget -->
+    <div class="tab" id="tab-budget">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div class="slabel" style="margin:0">budget vs actual</div>
+        <select id="budgetMonth" onchange="renderBudget()" style="font-family:'IBM Plex Mono',monospace;font-size:0.72rem;border:1px solid var(--border);background:var(--surface);color:var(--ink);padding:4px 8px;outline:none;cursor:pointer;"></select>
+      </div>
+      <div class="matrix" id="budgetMatrix"></div>
+      <div class="card-grid cols3" style="margin-top:14px;">
+        <div class="card"><div class="card-label">monthly income</div><div class="card-value" id="bTotal">—</div></div>
+        <div class="card"><div class="card-label">total spent</div><div class="card-value" id="bSpent">—</div></div>
+        <div class="card" style="background:var(--bg)"><div class="card-label">leftover / to invest</div><div class="card-value pos" id="bLeftover">—</div></div>
+      </div>
+    </div>
+
+    <!-- trends -->
+    <div class="tab" id="tab-trends">
+      <div class="slabel">3-month spending by category</div>
+      <div class="trend" id="trendMatrix"></div>
+    </div>
+
+    <!-- recurring -->
+    <div class="tab" id="tab-recurring">
+      <div class="slabel">detected recurring expenses</div>
+      <div class="recur" id="recurringList"></div>
+    </div>
+
+    <!-- portfolio -->
+    <div class="tab" id="tab-portfolio">
+      <div class="slabel">roth ira — current positions</div>
+      <div class="pos-table" id="positionsList"></div>
+      <div class="card-grid cols3" style="margin-top:14px;">
+        <div class="card"><div class="card-label">total value</div><div class="card-value" id="rothTotal">—</div></div>
+        <div class="card"><div class="card-label">total gain</div><div class="card-value" id="rothGain">—</div></div>
+        <div class="card"><div class="card-label">today's change</div><div class="card-value" id="rothToday">—</div></div>
+      </div>
+      <div style="margin-top:16px">
+        <div class="slabel">high yield savings</div>
+        <div class="card-grid cols3">
+          <div class="card"><div class="card-label">balance</div><div class="card-value pos" id="hysaBal">—</div><div class="card-sub">manual entry</div></div>
+          <div class="card"><div class="card-label">interest earned</div><div class="card-value pos" id="hysaInt">—</div><div class="card-sub">from uploads</div></div>
+          <div class="card"><div class="card-label">last transaction</div><div class="card-value" id="hysaLast">—</div><div class="card-sub" id="hysaLastDate"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- transactions -->
+    <div class="tab" id="tab-transactions">
+      <div class="tx-wrap">
+        <div class="tx-filters">
+          <select id="filterMonth" onchange="renderTable()"><option value="all">all months</option></select>
+          <select id="filterAccount" onchange="renderTable()">
+            <option value="all">all accounts</option>
+            <option value="debit">checking</option>
+            <option value="credit">credit card</option>
+          </select>
+          <select id="filterType" onchange="renderTable()">
+            <option value="all">all types</option>
+            <option value="expense">expenses</option>
+            <option value="income">income</option>
+          </select>
+        </div>
+        <div class="tx-head">
+          <span>date</span><span>description</span><span>category</span>
+          <span>account</span><span>debit</span><span>credit</span>
+        </div>
+        <div id="tableBody"></div>
+      </div>
+    </div>
+
+    <!-- settings -->
+    <div class="tab" id="tab-settings">
+      <div class="settings-block">
+        <h3>accounts</h3>
+        <div class="fields">
+          <div class="field"><label>monthly rent</label><input type="number" id="settingRent"/><div class="hint">fixed — never flagged over budget</div></div>
+          <div class="field"><label>hysa balance</label><input type="number" id="settingHysa"/><div class="hint">update manually each month</div></div>
+          <div class="field"><label>income override</label><input type="number" id="settingIncomeOverride" placeholder="auto-detected"/><div class="hint">leave blank to auto-detect</div></div>
+          <div class="field"><label>income keyword</label><input type="text" id="settingIncomeKeyword" placeholder="e.g. direct deposit"/><div class="hint">filter deposits to paychecks only</div></div>
+        </div>
+        <button class="save-btn" onclick="saveSettings()">save settings</button>
+      </div>
+      <div class="settings-block">
+        <h3>how to update data monthly</h3>
+        <div style="color:var(--muted);font-size:0.75rem;line-height:2.2;">
+          <div>1. export csvs from your bank</div>
+          <div>2. rename: Debit022026.csv / Credit022026.csv / HYSA022026.csv / Roth022026.csv</div>
+          <div>3. upload to github → <span id="settingsPath" style="color:var(--ink)"></span></div>
+          <div>4. click ↺ refresh above</div>
+        </div>
+      </div>
+      <div class="settings-block">
+        <h3>budget ratios</h3>
+        <div style="font-size:0.75rem;line-height:2.4;color:var(--muted);">
+          <div style="display:grid;grid-template-columns:2fr 1fr;max-width:260px;">
+            <span>housing (fixed)</span><span style="color:var(--ink)">41%</span>
+            <span>other needs</span><span style="color:var(--ink)">15%</span>
+            <span>wants</span><span style="color:var(--ink)">20%</span>
+            <span>savings target</span><span style="color:var(--ink)">24%</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- about -->
+    <div class="tab" id="tab-about">
+      <div class="settings-block">
+        <h3>category rollup structure</h3>
+        <div style="font-size:0.75rem;line-height:2.2;color:var(--muted);">
+          <div style="margin-bottom:16px;">
+            <div style="color:var(--ink);margin-bottom:6px;">needs (50% of income)</div>
+            <div style="padding-left:16px;">
+              <div>• housing — rent/mortgage</div>
+              <div>• groceries — food shopping</div>
+              <div>• transportation — gas, train, car expenses</div>
+              <div>• utilities — electric, water, internet</div>
+            </div>
+          </div>
+          <div style="margin-bottom:16px;">
+            <div style="color:var(--ink);margin-bottom:6px;">wants (30% of income)</div>
+            <div style="padding-left:16px;">
+              <div>• dining — restaurants, delivery</div>
+              <div>• shopping — retail, online purchases</div>
+              <div>• entertainment — movies, events, subscriptions</div>
+              <div>• health & fitness — gym, wellness</div>
+              <div>• pharmacy — prescriptions, health items</div>
+              <div>• business services — professional fees</div>
+            </div>
+          </div>
+          <div>
+            <div style="color:var(--ink);margin-bottom:6px;">savings (20% of income)</div>
+            <div style="padding-left:16px;">calculated as income minus needs minus wants</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-block">
+        <h3>budget ratio breakdown</h3>
+        <div style="font-size:0.75rem;line-height:2.2;color:var(--muted);">
+          <div style="margin-bottom:12px;">based on approximate monthly income of $6,000</div>
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr;max-width:400px;gap:8px;">
+            <div style="color:var(--ink);padding:4px 0;border-bottom:1px solid var(--border)">category</div>
+            <div style="color:var(--ink);padding:4px 0;border-bottom:1px solid var(--border);text-align:right">% of income</div>
+            <div style="color:var(--ink);padding:4px 0;border-bottom:1px solid var(--border);text-align:right">target amount</div>
+            
+            <div style="padding:4px 0">housing (fixed)</div>
+            <div style="text-align:right;padding:4px 0">41%</div>
+            <div style="text-align:right;padding:4px 0;color:var(--ink)">$2,480</div>
+            
+            <div style="padding:4px 0">other needs</div>
+            <div style="text-align:right;padding:4px 0">15%</div>
+            <div style="text-align:right;padding:4px 0;color:var(--ink)">$900</div>
+            
+            <div style="padding:4px 0">wants</div>
+            <div style="text-align:right;padding:4px 0">20%</div>
+            <div style="text-align:right;padding:4px 0;color:var(--ink)">$1,200</div>
+            
+            <div style="padding:4px 0;border-top:1px solid var(--border)">savings target</div>
+            <div style="text-align:right;padding:4px 0;border-top:1px solid var(--border)">24%</div>
+            <div style="text-align:right;padding:4px 0;color:var(--ink);border-top:1px solid var(--border)">$1,440</div>
+          </div>
+          <div style="margin-top:16px;font-size:0.7rem;">
+            note: housing takes 41% due to your rent amount. remaining categories are adjusted accordingly to ensure you still save 24%.
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-block">
+        <h3>how merchant grouping works</h3>
+        <div style="font-size:0.75rem;line-height:1.9;color:var(--muted);">
+          <div style="margin-bottom:12px;">transactions are automatically grouped by merchant name for easier tracking:</div>
+          <div style="padding-left:16px;margin-bottom:12px;">
+            <div>• numbers and special characters are stripped</div>
+            <div>• first 3 words of description are used</div>
+            <div>• similar merchants cluster together</div>
+          </div>
+          <div style="margin-bottom:8px;">examples:</div>
+          <div style="padding-left:16px;background:var(--bg);padding:12px;border:1px solid var(--border);">
+            <div style="margin-bottom:8px;">
+              <div style="color:var(--ink)">shell #1234 → groups as "shell"</div>
+              <div style="color:var(--ink)">shell #5678 → groups as "shell"</div>
+            </div>
+            <div style="margin-bottom:8px;">
+              <div style="color:var(--ink)">trader joe's #421 → groups as "trader joe's"</div>
+              <div style="color:var(--ink)">trader joe's #305 → groups as "trader joe's"</div>
+            </div>
+            <div>
+              <div style="color:var(--ink)">amazon.com*abc123 → groups as "amazon com"</div>
+              <div style="color:var(--ink)">amazon.com*xyz789 → groups as "amazon com"</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-block">
+        <h3>monthly file upload process</h3>
+        <div style="font-size:0.75rem;line-height:1.9;color:var(--muted);">
+          <div style="margin-bottom:12px;">upload fresh data each month around the 6th (after your paycheck hits):</div>
+          <div style="padding-left:16px;">
+            <div style="margin-bottom:6px;"><strong style="color:var(--ink)">step 1:</strong> export from your bank</div>
+            <div style="padding-left:16px;margin-bottom:12px;">
+              <div>• checking account → save as Debit[MMYYYY].csv</div>
+              <div>• credit card → save as Credit[MMYYYY].csv</div>
+              <div>• hysa → save as HYSA[MMYYYY].csv (full history)</div>
+              <div>• fidelity roth → save as Roth[MMYYYY].csv (positions)</div>
+            </div>
+            
+            <div style="margin-bottom:6px;"><strong style="color:var(--ink)">step 2:</strong> upload to github</div>
+            <div style="padding-left:16px;margin-bottom:12px;">
+              <div>• go to your github repo → data/bnelson/</div>
+              <div>• click "add file" → "upload files"</div>
+              <div>• drag your 4 csv files</div>
+              <div>• commit changes</div>
+            </div>
+            
+            <div style="margin-bottom:6px;"><strong style="color:var(--ink)">step 3:</strong> refresh dashboard</div>
+            <div style="padding-left:16px;">
+              <div>• return to dashboard</div>
+              <div>• click ↺ refresh in top banner</div>
+              <div>• new month appears automatically</div>
+            </div>
+          </div>
+          <div style="margin-top:16px;padding:12px;background:var(--bg);border:1px solid var(--border);">
+            <div style="color:var(--ink);margin-bottom:4px;">important: avoid duplicate data</div>
+            <div>when exporting from your bank, only export the current month to prevent duplicate transactions. if you accidentally upload overlapping data, re-export and replace the files.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
