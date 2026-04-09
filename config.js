@@ -33,10 +33,44 @@ window.FINANCE_CONFIG = {
     }
   },
 
+  // Map bank categories to budget categories
+  // Add your bank's category names here to auto-classify them
+  categoryMapping: {
+    // NEEDS
+    "Mortgage & Rent": "Housing",
+    "Home Insurance": "Housing",
+    "Gas": "Transportation",
+    "Rental Car & Taxi": "Transportation",
+    "Bills & Utilities": "Utilities",
+    "Auto Insurance": "Utilities",
+    "Groceries": "Groceries",
+    
+    // WANTS
+    "Restaurants": "Dining",
+    "Coffee Shops": "Dining",
+    "Fast Food": "Dining",
+    "Shopping": "Shopping",
+    "Alcohol & Bars": "Dining",
+    "Gym": "Health & Fitness",
+    "Entertainment": "Entertainment",
+    "Music": "Entertainment",
+    "Hair": "Health & Fitness",
+    "Furnishings": "Shopping",
+    "Home Improvement": "Shopping",
+    "Electronics & Software": "Shopping",
+    "Charity": "Shopping",
+    
+    // IGNORE (not spending)
+    "Paycheck": "IGNORE",
+    "Transfer": "IGNORE",
+    "Financial": "IGNORE",
+    "Cash": "IGNORE",
+  },
+
   users: {
     "bnelson": {
       displayName: "bnelson",
-      passwordHash: "6ca13d52ca70c883e0f0bb101e425a89e8624de51db2d2392593af6a84118090",
+      passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be",
       dataFolder: "data/bnelson",
       settings: {
         rentAmount:       2480,
