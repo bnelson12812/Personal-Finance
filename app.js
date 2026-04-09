@@ -472,7 +472,7 @@ function renderTrends() {
     <span>${m2?monthLabel(m2):'—'}</span>
     <span>${m1?monthLabel(m1):'—'}</span>
     <span>${monthLabel(m0)}</span>
-    <span>vs 2mo</span>
+    <span>vs 300</span>
     <span>vs prev</span>
   </div>`;
 
