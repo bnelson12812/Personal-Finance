@@ -12,8 +12,8 @@ let currentUser   = null;
 let dataFolder    = null;
 let settings      = {};
 let loadedFiles   = [];
+// reclassification overrides: { txKey: newCategory }
 let reclassify    = {};
-let txMerchantFilter = null;  // for drill-through from recurring
 
 // ─── Init ─────────────────────────────────────────────────
 (function init() {
@@ -247,24 +247,7 @@ function groupByMerchant(txs) {
 
 // ─── Populate Filters ─────────────────────────────────────
 function populateFilters() {
-  // Only show months where we actually have loaded files
-  const allMonths = getMonths();
-  const loadedMonthTags = loadedFiles.map(f => {
-    // Extract MMYYYY from filenames like "Debit012026"
-    const match = f.match(/(\d{6})$/);
-    return match ? match[1] : null;
-  }).filter(Boolean);
-  
-  // Convert tags to month keys (YYYY-MM)
-  const loadedMonthKeys = [...new Set(loadedMonthTags.map(tag => {
-    const mm = tag.slice(0,2);
-    const yyyy = tag.slice(2);
-    return yyyy + '-' + mm;
-  }))].sort();
-  
-  // Use loaded months for all dropdowns
-  const months = loadedMonthKeys.length ? loadedMonthKeys : allMonths;
-  
+  const months = getMonths();
   ['filterMonth'].forEach(id => {
     const sel = document.getElementById(id);
     sel.innerHTML = '<option value="all">all months</option>';
@@ -475,130 +458,39 @@ function toggleMx(id) {
   if (caret) caret.classList.toggle('open');
 }
 
-// ─── Trends (Hierarchical) ────────────────────────────────
+// ─── Trends ───────────────────────────────────────────────
 function renderTrends() {
   const months = getMonths();
   const last3  = months.slice(-3);
   if (!last3.length) return;
   const tx     = getActive();
+  const cats   = [...new Set(tx.filter(t=>t.debit>0).map(t=>t.category))].sort();
   const m0=last3[last3.length-1], m1=last3[last3.length-2], m2=last3[last3.length-3];
-
-  const ratios = settings.budgetRatios || { housing:0.41, otherNeeds:0.15, wants:0.20, savings:0.24 };
-  const groups = [
-    { key:'needs', label:'needs', categories: ['Housing', ...(settings.needsCategories||['Groceries','Transportation','Utilities'])] },
-    { key:'wants', label:'wants', categories: settings.wantsCategories||['Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services'] },
-  ];
 
   let html = `<div class="tr-head">
     <span>category</span>
     <span>${m2?monthLabel(m2):'—'}</span>
     <span>${m1?monthLabel(m1):'—'}</span>
     <span>${monthLabel(m0)}</span>
-    <span>vs prev</span>
     <span>vs 2mo</span>
+    <span>vs prev</span>
   </div>`;
 
-  groups.forEach(group => {
-    // Group totals
-    const gv0 = group.categories.reduce((s,c)=>s+catSpend(tx,c,m0),0);
-    const gv1 = m1?group.categories.reduce((s,c)=>s+catSpend(tx,c,m1),0):0;
-    const gv2 = m2?group.categories.reduce((s,c)=>s+catSpend(tx,c,m2),0):0;
-    const gd1 = m1 ? gv0-gv1 : null;
-    const gd2 = m2 ? gv0-gv2 : null;
-
-    const gid = 'tg_'+group.key;
-    html += `
-      <div class="tr-row" style="background:var(--bg);cursor:pointer;font-weight:500" onclick="toggleMx('${gid}')">
-        <div style="display:flex;align-items:center;gap:6px;font-size:0.72rem;letter-spacing:0.06em;">
-          <span class="caret open" id="c_${gid}">▶</span>${group.label}
-        </div>
-        <div class="tr-val">${gv2>0?fmt(gv2):'—'}</div>
-        <div class="tr-val">${gv1>0?fmt(gv1):'—'}</div>
-        <div class="tr-val">${gv0>0?fmt(gv0):'—'}</div>
-        <div class="tr-diff ${gd1===null?'':(gd1>0?'up':'dn')}">${gd1===null?'—':(gd1>0?'+':'')+fmt(gd1)}</div>
-        <div class="tr-diff ${gd2===null?'':(gd2>0?'up':'dn')}">${gd2===null?'—':(gd2>0?'+':'')+fmt(gd2)}</div>
-      </div>
-      <div id="${gid}">`;
-
-    // Level 2 — Categories
-    group.categories.forEach(cat => {
-      const cv0 = catSpend(tx,cat,m0);
-      const cv1 = m1?catSpend(tx,cat,m1):0;
-      const cv2 = m2?catSpend(tx,cat,m2):0;
-      if (!cv0&&!cv1&&!cv2) return;
-      const cd1 = m1 ? cv0-cv1 : null;
-      const cd2 = m2 ? cv0-cv2 : null;
-
-      const catTx0 = cat==='Housing'?[]:tx.filter(t=>monthKey(t.date)===m0&&t.category===cat&&t.debit>0&&!t.isTransfer);
-      const catTx1 = cat==='Housing'?[]:(m1?tx.filter(t=>monthKey(t.date)===m1&&t.category===cat&&t.debit>0&&!t.isTransfer):[]);
-      const catTx2 = cat==='Housing'?[]:(m2?tx.filter(t=>monthKey(t.date)===m2&&t.category===cat&&t.debit>0&&!t.isTransfer):[]);
-
-      const catId = 'tc_'+group.key+'_'+cat.replace(/\s/g,'_');
-      html += `
-        <div class="tr-row" style="padding-left:28px;cursor:pointer" onclick="toggleMx('${catId}')">
-          <div style="display:flex;align-items:center;gap:6px;">
-            <span class="caret" id="c_${catId}">▶</span>${cat.toLowerCase()}
-          </div>
-          <div class="tr-val">${cv2>0?fmt(cv2):'—'}</div>
-          <div class="tr-val">${cv1>0?fmt(cv1):'—'}</div>
-          <div class="tr-val">${cv0>0?fmt(cv0):'—'}</div>
-          <div class="tr-diff ${cd1===null?'':(cd1>0?'up':'dn')}">${cd1===null?'—':(cd1>0?'+':'')+fmt(cd1)}</div>
-          <div class="tr-diff ${cd2===null?'':(cd2>0?'up':'dn')}">${cd2===null?'—':(cd2>0?'+':'')+fmt(cd2)}</div>
-        </div>
-        <div class="hidden" id="${catId}">`;
-
-      // Level 3 — Merchants (aggregate across 3 months)
-      const allCatTx = [...catTx0, ...catTx1, ...catTx2];
-      const merchants = groupByMerchant(allCatTx);
-      
-      Object.entries(merchants).sort((a,b)=>
-        b[1].reduce((s,t)=>s+t.debit,0) - a[1].reduce((s,t)=>s+t.debit,0)
-      ).forEach(([merchant, mtxs]) => {
-        const mv0 = mtxs.filter(t=>monthKey(t.date)===m0).reduce((s,t)=>s+t.debit,0);
-        const mv1 = m1?mtxs.filter(t=>monthKey(t.date)===m1).reduce((s,t)=>s+t.debit,0):0;
-        const mv2 = m2?mtxs.filter(t=>monthKey(t.date)===m2).reduce((s,t)=>s+t.debit,0):0;
-        if (!mv0&&!mv1&&!mv2) return;
-        const md1 = m1 ? mv0-mv1 : null;
-        const md2 = m2 ? mv0-mv2 : null;
-
-        const mid = 'tm_'+catId+'_'+merchant.replace(/\s/g,'_').slice(0,20);
-        html += `
-          <div class="tr-row" style="padding-left:46px;cursor:pointer" onclick="toggleMx('${mid}')">
-            <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:0.75rem">
-              <span class="caret" id="c_${mid}">▶</span>${merchant}
-            </div>
-            <div class="tr-val" style="color:var(--muted);font-size:0.75rem">${mv2>0?fmt(mv2):'—'}</div>
-            <div class="tr-val" style="color:var(--muted);font-size:0.75rem">${mv1>0?fmt(mv1):'—'}</div>
-            <div class="tr-val" style="color:var(--muted);font-size:0.75rem">${mv0>0?fmt(mv0):'—'}</div>
-            <div class="tr-diff ${md1===null?'':(md1>0?'up':'dn')}" style="font-size:0.7rem">${md1===null?'—':(md1>0?'+':'')+fmt(md1)}</div>
-            <div class="tr-diff ${md2===null?'':(md2>0?'up':'dn')}" style="font-size:0.7rem">${md2===null?'—':(md2>0?'+':'')+fmt(md2)}</div>
-          </div>
-          <div class="hidden" id="${mid}">`;
-
-        // Level 4 — Transactions
-        mtxs.sort((a,b)=>b.date-a.date).forEach(t => {
-          const mk = monthKey(t.date);
-          const d = t.date.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'});
-          const col2 = mk===m2?fmt(t.debit):'—';
-          const col1 = mk===m1?fmt(t.debit):'—';
-          const col0 = mk===m0?fmt(t.debit):'—';
-          html += `
-            <div class="tr-row" style="padding-left:64px;border-bottom:1px solid var(--grid)">
-              <div style="color:var(--muted);font-size:0.7rem">
-                <span style="opacity:0.6">${d}</span> ${t.description.toLowerCase()}
-              </div>
-              <div class="tr-val" style="color:var(--muted);font-size:0.7rem">${col2}</div>
-              <div class="tr-val" style="color:var(--muted);font-size:0.7rem">${col1}</div>
-              <div class="tr-val" style="color:var(--muted);font-size:0.7rem">${col0}</div>
-              <div></div><div></div>
-            </div>`;
-        });
-
-        html += `</div>`;  // close merchant
-      });
-      html += `</div>`;  // close category
-    });
-    html += `</div>`;  // close group
+  cats.forEach(cat => {
+    const v0 = tx.filter(t=>monthKey(t.date)===m0&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0);
+    const v1 = m1?tx.filter(t=>monthKey(t.date)===m1&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0):0;
+    const v2 = m2?tx.filter(t=>monthKey(t.date)===m2&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0):0;
+    if (!v0&&!v1&&!v2) return;
+    const d1 = m1 ? v0-v1 : null;
+    const d2 = m2 ? v0-v2 : null;
+    html += `<div class="tr-row">
+      <div style="font-size:0.75rem">${cat.toLowerCase()}</div>
+      <div class="tr-val">${v2>0?fmt(v2):'—'}</div>
+      <div class="tr-val">${v1>0?fmt(v1):'—'}</div>
+      <div class="tr-val">${v0>0?fmt(v0):'—'}</div>
+      <div class="tr-diff ${d2===null?'':(d2>0?'up':'dn')}">${d2===null?'—':(d2>0?'+':'')+fmt(d2)}</div>
+      <div class="tr-diff ${d1===null?'':(d1>0?'up':'dn')}">${d1===null?'—':(d1>0?'+':'')+fmt(d1)}</div>
+    </div>`;
   });
 
   document.getElementById('trendMatrix').innerHTML = html;
@@ -626,14 +518,7 @@ function renderRecurring() {
     const stdev = Math.sqrt(txs.reduce((s,t)=>s+Math.pow(t.debit-avg,2),0)/txs.length);
     if (avg > 5 && stdev/avg > 0.25) return;
     const latest = txs.sort((a,b)=>b.date-a.date)[0];
-    recurring.push({ 
-      description: latest.description, 
-      category: latest.category, 
-      avgAmount: avg, 
-      monthsFound: seen.length, 
-      frequency: seen.length>=3?'monthly':'2+ months',
-      merchantKey: merchantName(latest.description)
-    });
+    recurring.push({ description:latest.description, category:latest.category, avgAmount:avg, monthsFound:seen.length, frequency: seen.length>=3?'monthly':'2+ months' });
   });
   recurring.sort((a,b)=>b.avgAmount-a.avgAmount);
   const el = document.getElementById('recurringList');
@@ -641,21 +526,14 @@ function renderRecurring() {
     el.innerHTML = '<div style="padding:32px 14px;text-align:center;color:var(--muted);font-size:0.75rem">no recurring expenses detected</div>';
     return;
   }
-  el.innerHTML = `<div class="recur-head"><span>description</span><span>category</span><span>avg/month</span><span>frequency</span><span></span></div>` +
+  el.innerHTML = `<div class="recur-head"><span>description</span><span>category</span><span>avg/month</span><span>frequency</span></div>` +
     recurring.map(r => `
       <div class="recur-row">
         <div>${r.description.toLowerCase()}</div>
         <div style="color:var(--muted);font-size:0.7rem">${r.category.toLowerCase()}</div>
         <div class="recur-val">${fmt(r.avgAmount)}</div>
         <div class="recur-val"><span class="badge">${r.frequency}</span></div>
-        <div class="drill-btn" onclick="drillToTransactions('${r.merchantKey.replace(/'/g,"\\'")}')" title="view transactions">→</div>
       </div>`).join('');
-}
-
-function drillToTransactions(merchant) {
-  txMerchantFilter = merchant;
-  switchTab('transactions');
-  renderTable();
 }
 
 // ─── Portfolio ────────────────────────────────────────────
@@ -703,18 +581,10 @@ function renderTable() {
     if (af!=='all' && t.accountType!==af)    return false;
     if (tf==='expense' && !(t.debit>0  && !t.isTransfer)) return false;
     if (tf==='income'  && !(t.credit>0 && !t.isTransfer)) return false;
-    // Apply merchant filter if set from drill-through
-    if (txMerchantFilter && merchantName(t.description) !== txMerchantFilter) return false;
     return true;
   });
   const body = document.getElementById('tableBody');
-  if (!f.length) { 
-    const msg = txMerchantFilter 
-      ? `no transactions for "${txMerchantFilter}" <span style="cursor:pointer;text-decoration:underline;margin-left:8px" onclick="clearMerchantFilter()">clear filter</span>`
-      : 'no transactions match your filters';
-    body.innerHTML=`<div class="tx-empty">${msg}</div>`; 
-    return; 
-  }
+  if (!f.length) { body.innerHTML='<div class="tx-empty">no transactions match your filters</div>'; return; }
   body.innerHTML = f.map(t => {
     const d = t.date.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'});
     const badge = t.isTransfer ? `<span class="tx-badge">transfer</span>`
@@ -729,19 +599,6 @@ function renderTable() {
       ${t.credit>0 ? `<div class="tx-cr">+${fmt(t.credit)}</div>` : '<div></div>'}
     </div>`;
   }).join('');
-  
-  // Show clear filter message if merchant filter is active
-  if (txMerchantFilter) {
-    const filterMsg = document.createElement('div');
-    filterMsg.style.cssText = 'padding:10px 14px;background:var(--bg);border-bottom:1px solid var(--border);font-size:0.72rem;color:var(--muted);';
-    filterMsg.innerHTML = `filtering by: <strong style="color:var(--ink)">${txMerchantFilter}</strong> <span style="cursor:pointer;text-decoration:underline;margin-left:8px;color:var(--ink)" onclick="clearMerchantFilter()">clear</span>`;
-    body.insertAdjacentElement('beforebegin', filterMsg);
-  }
-}
-
-function clearMerchantFilter() {
-  txMerchantFilter = null;
-  renderTable();
 }
 
 // ─── Tab Switch ───────────────────────────────────────────
