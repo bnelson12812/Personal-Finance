@@ -12,8 +12,9 @@ let currentUser   = null;
 let dataFolder    = null;
 let settings      = {};
 let loadedFiles   = [];
-// reclassification overrides: { txKey: newCategory }
 let reclassify    = {};
+let txMerchantFilter = null;  // for drill-through from recurring
+let uncategorizedCount = 0;   // track uncategorized transactions
 
 // ─── Init ─────────────────────────────────────────────────
 (function init() {
@@ -27,6 +28,10 @@ let reclassify    = {};
   const localSettings   = JSON.parse(localStorage.getItem('finance_settings_' + currentUser) || '{}');
   settings    = { ...configUser.settings, ...sessionSettings, ...localSettings };
   reclassify  = JSON.parse(localStorage.getItem('finance_reclassify_' + currentUser) || '{}');
+  
+  // Load saved category mappings
+  const savedMappings = JSON.parse(localStorage.getItem('finance_categoryMapping_' + currentUser) || '{}');
+  window.FINANCE_CONFIG.categoryMapping = { ...window.FINANCE_CONFIG.categoryMapping, ...savedMappings };
 
   setText('userTag',      displayName);
   setText('expectedPath', dataFolder + '/Debit102025.csv');
@@ -113,6 +118,9 @@ async function loadData() {
 
   // apply saved reclassifications
   applyReclassify();
+  
+  // auto-classify using mapping
+  autoClassify();
 
   setText('filesLoaded',  loadedFiles.length + '');
   setText('dataPathHint', dataFolder + '/');
@@ -141,13 +149,62 @@ function applyReclassify() {
   });
 }
 
+// ─── Auto-Classification ──────────────────────────────────
+function autoClassify() {
+  const mapping = window.FINANCE_CONFIG.categoryMapping || {};
+  uncategorizedCount = 0;
+  
+  allTx.forEach(t => {
+    const bankCat = t.category;
+    
+    // Skip if already reclassified manually
+    const k = txKey(t);
+    if (reclassify[k]) return;
+    
+    // Map bank category to budget category
+    if (mapping[bankCat]) {
+      const mapped = mapping[bankCat];
+      // IGNORE means don't count as spending (transfers, income, etc)
+      if (mapped === 'IGNORE') {
+        t.budgetCategory = 'IGNORE';
+      } else {
+        t.budgetCategory = mapped;
+      }
+    } else {
+      // No mapping found — mark as uncategorized
+      t.budgetCategory = 'Uncategorized';
+      if (t.debit > 0 && !t.isTransfer) uncategorizedCount++;
+    }
+  });
+}
+
 function reclassifyTx(key, newCat) {
   reclassify[key] = newCat;
   localStorage.setItem('finance_reclassify_' + currentUser, JSON.stringify(reclassify));
   applyReclassify();
+  autoClassify();
   renderBudget();
   renderTable();
   showToast('transaction reclassified');
+}
+
+function reclassifyBudgetCat(txKey, bankCategory, newBudgetCategory) {
+  // Update the category mapping so future transactions auto-classify correctly
+  const mapping = window.FINANCE_CONFIG.categoryMapping || {};
+  mapping[bankCategory] = newBudgetCategory;
+  
+  // Save to localStorage
+  const mappingKey = 'finance_categoryMapping_' + currentUser;
+  localStorage.setItem(mappingKey, JSON.stringify(mapping));
+  
+  // Reload mapping and re-classify all transactions
+  window.FINANCE_CONFIG.categoryMapping = { ...window.FINANCE_CONFIG.categoryMapping, ...mapping };
+  autoClassify();
+  
+  renderBudget();
+  renderTrends();
+  renderTable();
+  showToast('category mapped: ' + bankCategory + ' → ' + newBudgetCategory);
 }
 
 // ─── CSV Parsers ──────────────────────────────────────────
@@ -220,7 +277,7 @@ function getIncome(tx, mk) {
 // ─── Spend Helpers ────────────────────────────────────────
 function catSpend(tx, cat, mk) {
   if (cat === 'Housing') return settings.rentAmount || 0;
-  return tx.filter(t => monthKey(t.date)===mk && t.category===cat && t.debit>0 && !t.isTransfer)
+  return tx.filter(t => monthKey(t.date)===mk && t.budgetCategory===cat && t.debit>0 && !t.isTransfer && t.budgetCategory !== 'IGNORE')
            .reduce((s,t) => s+t.debit, 0);
 }
 
@@ -267,12 +324,34 @@ function populateFilters() {
 
 // ─── Render All ───────────────────────────────────────────
 function renderAll() {
+  // Update uncategorized banner
+  if (uncategorizedCount > 0) {
+    document.getElementById('uncategorizedBanner').style.display = 'flex';
+    setText('uncategorizedCount', uncategorizedCount + '');
+  } else {
+    document.getElementById('uncategorizedBanner').style.display = 'none';
+  }
+  
   renderNetWorth();
   renderOverview();
   renderBudget();
   renderTrends();
   renderRecurring();
   renderPortfolio();
+  renderTable();
+}
+
+function hideUncategorizedBanner() {
+  document.getElementById('uncategorizedBanner').style.display = 'none';
+}
+
+function showUncategorized() {
+  switchTab('transactions');
+  // Filter to uncategorized transactions
+  const tx = getActive();
+  const uncatTx = tx.filter(t => t.budgetCategory === 'Uncategorized' && t.debit > 0);
+  console.log('Uncategorized transactions:', uncatTx);
+  // TODO: Add filter UI for this
   renderTable();
 }
 
@@ -334,6 +413,12 @@ function renderBudget() {
     { group:'wants',  label:'wants',  budget: income * ratios.wants,
       categories: settings.wantsCategories||['Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services'] },
   ];
+  
+  // Check if there are uncategorized transactions this month
+  const uncatSpend = tx.filter(t => monthKey(t.date)===mk && t.budgetCategory==='Uncategorized' && t.debit>0 && !t.isTransfer).reduce((s,t)=>s+t.debit,0);
+  if (uncatSpend > 0) {
+    allCats.push({ group:'uncategorized', label:'uncategorized ⚠️', budget: 0, categories: ['Uncategorized'] });
+  }
 
   let totalSpent = 0;
   const el = document.getElementById('budgetMatrix');
@@ -374,7 +459,7 @@ function renderBudget() {
 
       // transactions for this category this month
       const catTx = cat==='Housing' ? [] :
-        tx.filter(t => monthKey(t.date)===mk && t.category===cat && t.debit>0 && !t.isTransfer);
+        tx.filter(t => monthKey(t.date)===mk && t.budgetCategory===cat && t.debit>0 && !t.isTransfer);
 
       // group into merchants
       const merchants = groupByMerchant(catTx);
@@ -409,14 +494,14 @@ function renderBudget() {
           const d   = t.date.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'});
           const allCatOptions = [
             'Housing','Groceries','Transportation','Utilities',
-            'Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services','Uncategorized'
-          ].map(c => `<option value="${c}" ${c===t.category?'selected':''}>${c.toLowerCase()}</option>`).join('');
+            'Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services'
+          ].map(c => `<option value="${c}" ${c===t.budgetCategory?'selected':''}>${c.toLowerCase()}</option>`).join('');
           html += `
             <div class="mx-tx">
               <div class="mx-tx-name">
                 <span class="mx-tx-date">${d}</span>
                 ${t.description.toLowerCase()}
-                <select class="reclassify-select" onchange="reclassifyTx('${k}', this.value)" onclick="event.stopPropagation()">
+                <select class="reclassify-select" onchange="reclassifyBudgetCat('${k}', '${t.category}', this.value)" onclick="event.stopPropagation()">
                   ${allCatOptions}
                 </select>
               </div>
@@ -471,6 +556,15 @@ function renderTrends() {
     { key:'needs', label:'needs', categories: ['Housing', ...(settings.needsCategories||['Groceries','Transportation','Utilities'])] },
     { key:'wants', label:'wants', categories: settings.wantsCategories||['Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services'] },
   ];
+  
+  // Check if there are uncategorized transactions in the last 3 months
+  const allMonths = [m0, m1, m2].filter(Boolean);
+  const hasUncat = allMonths.some(mk => 
+    tx.filter(t=>monthKey(t.date)===mk&&t.budgetCategory==='Uncategorized'&&t.debit>0&&!t.isTransfer).length > 0
+  );
+  if (hasUncat) {
+    groups.push({ key:'uncategorized', label:'uncategorized ⚠️', categories: ['Uncategorized'] });
+  }
 
   let html = `<div class="tr-head">
     <span>category</span>
@@ -512,9 +606,9 @@ function renderTrends() {
       const cd1 = m1 ? cv0-cv1 : null;
       const cd2 = m2 ? cv0-cv2 : null;
 
-      const catTx0 = cat==='Housing'?[]:tx.filter(t=>monthKey(t.date)===m0&&t.category===cat&&t.debit>0&&!t.isTransfer);
-      const catTx1 = cat==='Housing'?[]:(m1?tx.filter(t=>monthKey(t.date)===m1&&t.category===cat&&t.debit>0&&!t.isTransfer):[]);
-      const catTx2 = cat==='Housing'?[]:(m2?tx.filter(t=>monthKey(t.date)===m2&&t.category===cat&&t.debit>0&&!t.isTransfer):[]);
+      const catTx0 = cat==='Housing'?[]:tx.filter(t=>monthKey(t.date)===m0&&t.budgetCategory===cat&&t.debit>0&&!t.isTransfer);
+      const catTx1 = cat==='Housing'?[]:(m1?tx.filter(t=>monthKey(t.date)===m1&&t.budgetCategory===cat&&t.debit>0&&!t.isTransfer):[]);
+      const catTx2 = cat==='Housing'?[]:(m2?tx.filter(t=>monthKey(t.date)===m2&&t.budgetCategory===cat&&t.debit>0&&!t.isTransfer):[]);
 
       const catId = 'tc_'+group.key+'_'+cat.replace(/\s/g,'_');
       html += `
