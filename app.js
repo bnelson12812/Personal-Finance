@@ -505,7 +505,7 @@ function renderBudget() {
               <div class="mx-tx-name">
                 <span class="mx-tx-date">${d}</span>
                 ${t.description.toLowerCase()}
-                <select class="reclassify-select" onchange="reclassifyBudgetCat('${k}', '${t.originalCategory}', this.value)" onclick="event.stopPropagation()">
+                <select class="reclassify-select" onchange="reclassifyBudgetCat('${k}', '${t.category}', this.value)" onclick="event.stopPropagation()">
                   ${allCatOptions}
                 </select>
               </div>
