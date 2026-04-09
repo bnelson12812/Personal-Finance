@@ -218,6 +218,11 @@
       <span class="refresh" onclick="loadData()">↺ refresh</span>
     </div>
 
+    <div class="banner" id="uncategorizedBanner" style="display:none;background:var(--warn);color:#fff;border-color:var(--warn)">
+      <span>⚠️ <span id="uncategorizedCount"></span> uncategorized transactions — <span style="cursor:pointer;text-decoration:underline" onclick="showUncategorized()">click to review</span></span>
+      <span style="cursor:pointer" onclick="hideUncategorizedBanner()">✕</span>
+    </div>
+
     <div class="nav">
       <button class="nav-btn active" onclick="switchTab('overview')">overview</button>
       <button class="nav-btn" onclick="switchTab('budget')">budget</button>
@@ -390,6 +395,34 @@
           <div>
             <div style="color:var(--ink);margin-bottom:6px;">savings (20% of income)</div>
             <div style="padding-left:16px;">calculated as income minus needs minus wants</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="settings-block">
+        <h3>auto-classification system</h3>
+        <div style="font-size:0.75rem;line-height:1.9;color:var(--muted);">
+          <div style="margin-bottom:12px;">the dashboard automatically maps your bank's category names to budget categories:</div>
+          <div style="padding-left:16px;margin-bottom:12px;">
+            <div>• when you upload csvs, each transaction has a bank category</div>
+            <div>• dashboard uses config.js mapping to assign budget categories</div>
+            <div>• unmapped categories appear in "uncategorized ⚠️" group</div>
+            <div>• fix by clicking any uncategorized transaction dropdown</div>
+          </div>
+          <div style="margin-bottom:8px;">example mappings:</div>
+          <div style="padding-left:16px;background:var(--bg);padding:12px;border:1px solid var(--border);">
+            <div style="margin-bottom:8px;">
+              <div style="color:var(--ink)">bank: "mortgage & rent" → budget: "housing"</div>
+              <div style="color:var(--ink)">bank: "gas" → budget: "transportation"</div>
+              <div style="color:var(--ink)">bank: "coffee shops" → budget: "dining"</div>
+            </div>
+          </div>
+          <div style="margin-top:16px;padding:12px;background:#FDF5F5;border:1px solid #E8C0C0;">
+            <div style="color:var(--ink);margin-bottom:4px;">⚠️ when uncategorized items appear</div>
+            <div>1. orange banner shows at top of dashboard</div>
+            <div>2. drill down to uncategorized group in budget/trends</div>
+            <div>3. hover any transaction → select correct category</div>
+            <div>4. mapping auto-saves — all similar transactions fixed</div>
           </div>
         </div>
       </div>
