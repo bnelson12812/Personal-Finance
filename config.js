@@ -70,7 +70,7 @@ window.FINANCE_CONFIG = {
   users: {
     "bnelson": {
       displayName: "bnelson",
-      passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be",
+      passwordHash: "e99a18c428cb38d5f260853678922e03",
       dataFolder: "data/bnelson",
       settings: {
         rentAmount:       2480,
@@ -90,7 +90,7 @@ window.FINANCE_CONFIG = {
     },
     "wnelson": {
       displayName: "wnelson",
-      passwordHash: "494a715f7e9b4071aca61bac42ca858a309524e5864f0920030862a4ae7589be",
+      passwordHash: "e99a18c428cb38d5f260853678922e03",
       dataFolder: "data/wnelson",
       settings: {
         rentAmount:       0,
