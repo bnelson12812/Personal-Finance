@@ -464,8 +464,13 @@ function renderTrends() {
   const last3  = months.slice(-3);
   if (!last3.length) return;
   const tx     = getActive();
-  const cats   = [...new Set(tx.filter(t=>t.debit>0).map(t=>t.category))].sort();
   const m0=last3[last3.length-1], m1=last3[last3.length-2], m2=last3[last3.length-3];
+
+  const ratios = settings.budgetRatios || { housing:0.41, otherNeeds:0.15, wants:0.20, savings:0.24 };
+  const groups = [
+    { key:'needs', label:'needs', categories: ['Housing', ...(settings.needsCategories||['Groceries','Transportation','Utilities'])] },
+    { key:'wants', label:'wants', categories: settings.wantsCategories||['Dining','Shopping','Entertainment','Health & Fitness','Pharmacy','Business Services'] },
+  ];
 
   let html = `<div class="tr-head">
     <span>category</span>
@@ -476,21 +481,107 @@ function renderTrends() {
     <span>vs prev</span>
   </div>`;
 
-  cats.forEach(cat => {
-    const v0 = tx.filter(t=>monthKey(t.date)===m0&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0);
-    const v1 = m1?tx.filter(t=>monthKey(t.date)===m1&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0):0;
-    const v2 = m2?tx.filter(t=>monthKey(t.date)===m2&&t.category===cat&&t.debit>0).reduce((s,t)=>s+t.debit,0):0;
-    if (!v0&&!v1&&!v2) return;
-    const d1 = m1 ? v0-v1 : null;
-    const d2 = m2 ? v0-v2 : null;
-    html += `<div class="tr-row">
-      <div style="font-size:0.75rem">${cat.toLowerCase()}</div>
-      <div class="tr-val">${v2>0?fmt(v2):'—'}</div>
-      <div class="tr-val">${v1>0?fmt(v1):'—'}</div>
-      <div class="tr-val">${v0>0?fmt(v0):'—'}</div>
-      <div class="tr-diff ${d2===null?'':(d2>0?'up':'dn')}">${d2===null?'—':(d2>0?'+':'')+fmt(d2)}</div>
-      <div class="tr-diff ${d1===null?'':(d1>0?'up':'dn')}">${d1===null?'—':(d1>0?'+':'')+fmt(d1)}</div>
-    </div>`;
+  groups.forEach(group => {
+    // Group totals
+    const gv0 = group.categories.reduce((s,c)=>s+catSpend(tx,c,m0),0);
+    const gv1 = m1?group.categories.reduce((s,c)=>s+catSpend(tx,c,m1),0):0;
+    const gv2 = m2?group.categories.reduce((s,c)=>s+catSpend(tx,c,m2),0):0;
+    const gd1 = m1 ? gv0-gv1 : null;
+    const gd2 = m2 ? gv0-gv2 : null;
+
+    const gid = 'tg_'+group.key;
+    html += `
+      <div class="tr-row" style="background:var(--bg);cursor:pointer;font-weight:500" onclick="toggleMx('${gid}')">
+        <div style="display:flex;align-items:center;gap:6px;font-size:0.72rem;letter-spacing:0.06em;">
+          <span class="caret open" id="c_${gid}">▶</span>${group.label}
+        </div>
+        <div class="tr-val">${gv2>0?fmt(gv2):'—'}</div>
+        <div class="tr-val">${gv1>0?fmt(gv1):'—'}</div>
+        <div class="tr-val">${gv0>0?fmt(gv0):'—'}</div>
+        <div class="tr-diff ${gd2===null?'':(gd2>0?'up':'dn')}">${gd2===null?'—':(gd2>0?'+':'')+fmt(gd2)}</div>
+        <div class="tr-diff ${gd1===null?'':(gd1>0?'up':'dn')}">${gd1===null?'—':(gd1>0?'+':'')+fmt(gd1)}</div>
+      </div>
+      <div id="${gid}">`;
+
+    // Level 2 — Categories
+    group.categories.forEach(cat => {
+      const cv0 = catSpend(tx,cat,m0);
+      const cv1 = m1?catSpend(tx,cat,m1):0;
+      const cv2 = m2?catSpend(tx,cat,m2):0;
+      if (!cv0&&!cv1&&!cv2) return;
+      const cd1 = m1 ? cv0-cv1 : null;
+      const cd2 = m2 ? cv0-cv2 : null;
+
+      const catTx0 = cat==='Housing'?[]:tx.filter(t=>monthKey(t.date)===m0&&t.category===cat&&t.debit>0&&!t.isTransfer);
+      const catTx1 = cat==='Housing'?[]:(m1?tx.filter(t=>monthKey(t.date)===m1&&t.category===cat&&t.debit>0&&!t.isTransfer):[]);
+      const catTx2 = cat==='Housing'?[]:(m2?tx.filter(t=>monthKey(t.date)===m2&&t.category===cat&&t.debit>0&&!t.isTransfer):[]);
+
+      const catId = 'tc_'+group.key+'_'+cat.replace(/\s/g,'_');
+      html += `
+        <div class="tr-row" style="padding-left:28px;cursor:pointer" onclick="toggleMx('${catId}')">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="caret" id="c_${catId}">▶</span>${cat.toLowerCase()}
+          </div>
+          <div class="tr-val">${cv2>0?fmt(cv2):'—'}</div>
+          <div class="tr-val">${cv1>0?fmt(cv1):'—'}</div>
+          <div class="tr-val">${cv0>0?fmt(cv0):'—'}</div>
+          <div class="tr-diff ${cd2===null?'':(cd2>0?'up':'dn')}">${cd2===null?'—':(cd2>0?'+':'')+fmt(cd2)}</div>
+          <div class="tr-diff ${cd1===null?'':(cd1>0?'up':'dn')}">${cd1===null?'—':(cd1>0?'+':'')+fmt(cd1)}</div>
+        </div>
+        <div class="hidden" id="${catId}">`;
+
+      // Level 3 — Merchants (aggregate across 3 months)
+      const allCatTx = [...catTx0, ...catTx1, ...catTx2];
+      const merchants = groupByMerchant(allCatTx);
+      
+      Object.entries(merchants).sort((a,b)=>
+        b[1].reduce((s,t)=>s+t.debit,0) - a[1].reduce((s,t)=>s+t.debit,0)
+      ).forEach(([merchant, mtxs]) => {
+        const mv0 = mtxs.filter(t=>monthKey(t.date)===m0).reduce((s,t)=>s+t.debit,0);
+        const mv1 = m1?mtxs.filter(t=>monthKey(t.date)===m1).reduce((s,t)=>s+t.debit,0):0;
+        const mv2 = m2?mtxs.filter(t=>monthKey(t.date)===m2).reduce((s,t)=>s+t.debit,0):0;
+        if (!mv0&&!mv1&&!mv2) return;
+        const md1 = m1 ? mv0-mv1 : null;
+        const md2 = m2 ? mv0-mv2 : null;
+
+        const mid = 'tm_'+catId+'_'+merchant.replace(/\s/g,'_').slice(0,20);
+        html += `
+          <div class="tr-row" style="padding-left:46px;cursor:pointer" onclick="toggleMx('${mid}')">
+            <div style="display:flex;align-items:center;gap:6px;color:var(--muted);font-size:0.75rem">
+              <span class="caret" id="c_${mid}">▶</span>${merchant}
+            </div>
+            <div class="tr-val" style="color:var(--muted);font-size:0.75rem">${mv2>0?fmt(mv2):'—'}</div>
+            <div class="tr-val" style="color:var(--muted);font-size:0.75rem">${mv1>0?fmt(mv1):'—'}</div>
+            <div class="tr-val" style="color:var(--muted);font-size:0.75rem">${mv0>0?fmt(mv0):'—'}</div>
+            <div class="tr-diff ${md2===null?'':(md2>0?'up':'dn')}" style="font-size:0.7rem">${md2===null?'—':(md2>0?'+':'')+fmt(md2)}</div>
+            <div class="tr-diff ${md1===null?'':(md1>0?'up':'dn')}" style="font-size:0.7rem">${md1===null?'—':(md1>0?'+':'')+fmt(md1)}</div>
+          </div>
+          <div class="hidden" id="${mid}">`;
+
+        // Level 4 — Transactions
+        mtxs.sort((a,b)=>b.date-a.date).forEach(t => {
+          const mk = monthKey(t.date);
+          const d = t.date.toLocaleDateString('en-US',{month:'2-digit',day:'2-digit',year:'2-digit'});
+          const col2 = mk===m2?fmt(t.debit):'—';
+          const col1 = mk===m1?fmt(t.debit):'—';
+          const col0 = mk===m0?fmt(t.debit):'—';
+          html += `
+            <div class="tr-row" style="padding-left:64px;border-bottom:1px solid var(--grid)">
+              <div style="color:var(--muted);font-size:0.7rem">
+                <span style="opacity:0.6">${d}</span> ${t.description.toLowerCase()}
+              </div>
+              <div class="tr-val" style="color:var(--muted);font-size:0.7rem">${col2}</div>
+              <div class="tr-val" style="color:var(--muted);font-size:0.7rem">${col1}</div>
+              <div class="tr-val" style="color:var(--muted);font-size:0.7rem">${col0}</div>
+              <div></div><div></div>
+            </div>`;
+        });
+
+        html += `</div>`;  // close merchant
+      });
+      html += `</div>`;  // close category
+    });
+    html += `</div>`;  // close group
   });
 
   document.getElementById('trendMatrix').innerHTML = html;
