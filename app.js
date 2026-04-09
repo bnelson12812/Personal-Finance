@@ -192,16 +192,20 @@ function reclassifyTx(key, newCat) {
 }
 
 function reclassifyBudgetCat(txKey, bankCategory, newBudgetCategory) {
-  // Update the category mapping so future transactions auto-classify correctly
-  const mapping = window.FINANCE_CONFIG.categoryMapping || {};
-  mapping[bankCategory] = newBudgetCategory;
-  
-  // Save to localStorage
+  // Get existing saved mappings from localStorage
   const mappingKey = 'finance_categoryMapping_' + currentUser;
-  localStorage.setItem(mappingKey, JSON.stringify(mapping));
+  const savedMappings = JSON.parse(localStorage.getItem(mappingKey) || '{}');
   
-  // Reload mapping and re-classify all transactions
-  window.FINANCE_CONFIG.categoryMapping = { ...window.FINANCE_CONFIG.categoryMapping, ...mapping };
+  // Add/update this mapping
+  savedMappings[bankCategory] = newBudgetCategory;
+  
+  // Save back to localStorage
+  localStorage.setItem(mappingKey, JSON.stringify(savedMappings));
+  
+  // Update runtime config
+  window.FINANCE_CONFIG.categoryMapping[bankCategory] = newBudgetCategory;
+  
+  // Re-classify all transactions with updated mapping
   autoClassify();
   
   renderBudget();
