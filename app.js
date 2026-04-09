@@ -346,13 +346,9 @@ function hideUncategorizedBanner() {
 }
 
 function showUncategorized() {
-  switchTab('transactions');
-  // Filter to uncategorized transactions
-  const tx = getActive();
-  const uncatTx = tx.filter(t => t.budgetCategory === 'Uncategorized' && t.debit > 0);
-  console.log('Uncategorized transactions:', uncatTx);
-  // TODO: Add filter UI for this
-  renderTable();
+  // Jump to budget tab where uncategorized group is visible
+  switchTab('budget');
+  showToast('scroll down to "uncategorized ⚠️" group');
 }
 
 // ─── Net Worth ────────────────────────────────────────────
