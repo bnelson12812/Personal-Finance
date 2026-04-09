@@ -159,7 +159,10 @@ function autoClassify() {
     
     // Skip if already reclassified manually
     const k = txKey(t);
-    if (reclassify[k]) return;
+    if (reclassify[k]) {
+      t.budgetCategory = reclassify[k];
+      return;
+    }
     
     // Map bank category to budget category
     if (mapping[bankCat]) {
@@ -236,6 +239,7 @@ function normalizeRow(row, accountType) {
     date:        parseDate(row['Post Date'] || ''),
     description: (row['Description'] || '').trim(),
     category:    (row['Classification'] || 'Uncategorized').trim(),
+    originalCategory: (row['Classification'] || 'Uncategorized').trim(), // Store original for mapping
     accountType,
     debit:       parseAmt(row['Debit']   || '0'),
     credit:      parseAmt(row['Credit']  || '0'),
@@ -497,7 +501,7 @@ function renderBudget() {
               <div class="mx-tx-name">
                 <span class="mx-tx-date">${d}</span>
                 ${t.description.toLowerCase()}
-                <select class="reclassify-select" onchange="reclassifyBudgetCat('${k}', '${t.category}', this.value)" onclick="event.stopPropagation()">
+                <select class="reclassify-select" onchange="reclassifyBudgetCat('${k}', '${t.originalCategory}', this.value)" onclick="event.stopPropagation()">
                   ${allCatOptions}
                 </select>
               </div>
